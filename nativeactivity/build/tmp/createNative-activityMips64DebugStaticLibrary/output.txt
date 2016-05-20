@@ -1,0 +1,4 @@
+See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/createNative-activityMips64DebugStaticLibrary/output.txt for all output for createNative-activityMips64DebugStaticLibrary.
+archiving libnative-activity.a successful.
+
+Finished createNative-activityMips64DebugStaticLibrary, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/createNative-activityMips64DebugStaticLibrary/output.txt.

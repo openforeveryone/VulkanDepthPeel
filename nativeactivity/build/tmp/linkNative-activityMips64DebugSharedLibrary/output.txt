@@ -1,0 +1,5 @@
+See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityMips64DebugSharedLibrary/output.txt for all output for linkNative-activityMips64DebugSharedLibrary.
+linking libnative-activity.so successful.
+mips64el-linux-android-g++: warning: /home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/intermediates/objectFiles/mips64DebugSharedLibrary/native-activityMainC/5ice3mt84bit32xd5hxso6fa6/android_native_app_glue.o: linker input file unused because linking not done
+
+Finished linkNative-activityMips64DebugSharedLibrary, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityMips64DebugSharedLibrary/output.txt.

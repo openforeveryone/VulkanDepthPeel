@@ -1,0 +1,4 @@
+See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/compileNative-activityArm64-v8aDebugStaticLibraryNative-activityMainC/output.txt for all output for compileNative-activityArm64-v8aDebugStaticLibraryNative-activityMainC.
+compiling android_native_app_glue.c successful.
+
+Finished compileNative-activityArm64-v8aDebugStaticLibraryNative-activityMainC, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/compileNative-activityArm64-v8aDebugStaticLibraryNative-activityMainC/output.txt.
