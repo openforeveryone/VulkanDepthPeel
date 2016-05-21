@@ -1,4 +1,0 @@
-See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/createNative-activityArmeabi-v7aDebugStaticLibrary/output.txt for all output for createNative-activityArmeabi-v7aDebugStaticLibrary.
-archiving libnative-activity.a successful.
-
-Finished createNative-activityArmeabi-v7aDebugStaticLibrary, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/createNative-activityArmeabi-v7aDebugStaticLibrary/output.txt.
