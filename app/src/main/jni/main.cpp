@@ -839,9 +839,9 @@ static int engine_init_display(struct engine* engine) {
     attachments[1].format = depth_format;
     attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].flags = 0;
@@ -1009,7 +1009,7 @@ static int engine_init_display(struct engine* engine) {
     uniformBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     uniformBufferCreateInfo.pNext = NULL;
     uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniformBufferCreateInfo.size = sizeof(float)*16; //Enough to store 1 mmatrix.
+    uniformBufferCreateInfo.size = sizeof(float)*16; //Enough to store 1 matrix.
     uniformBufferCreateInfo.queueFamilyIndexCount = 0;
     uniformBufferCreateInfo.pQueueFamilyIndices = NULL;
     uniformBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -1299,13 +1299,6 @@ static int engine_init_display(struct engine* engine) {
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
-    ds.back.failOp = VK_STENCIL_OP_KEEP;
-    ds.back.passOp = VK_STENCIL_OP_KEEP;
-    ds.back.compareOp = VK_COMPARE_OP_ALWAYS;
-    ds.back.compareMask = 0;
-    ds.back.reference = 0;
-    ds.back.depthFailOp = VK_STENCIL_OP_KEEP;
-    ds.back.writeMask = 0;
     ds.minDepthBounds = 0;
     ds.maxDepthBounds = 0;
     ds.stencilTestEnable = VK_FALSE;
@@ -1387,16 +1380,6 @@ void updateUniforms(struct engine* engine)
  * Just the current frame in the display.
  */
 static void engine_draw_frame(struct engine* engine) {
-//    if (engine->display == NULL) {
-//        // No display.
-//        return;
-//    }
-
-//    // Just fill the screen with a color.
-//    glClearColor(1, 0, 0, 1);
-//    glClear(GL_COLOR_BUFFER_BIT);
-//
-//    eglSwapBuffers(engine->display, engine->surface);
 
     if (!engine->vulkanSetupOK)
     {
@@ -1404,32 +1387,20 @@ static void engine_draw_frame(struct engine* engine) {
         LOGI("Vulkan not ready");
         return;
     }
-    VkClearValue clear_values[2];
-    clear_values[0].color.float32[0] = 0.2f;
-    clear_values[0].color.float32[1] = 0.2f;
-    clear_values[0].color.float32[2] = 0.2f;
-    clear_values[0].color.float32[3] = 0.2f;
-    clear_values[1].depthStencil.depth = 1.0f;
-    clear_values[1].depthStencil.stencil = 0;
+
+    VkClearValue clearValues[2];
+    clearValues[0].color.float32[0] = 0.2f;
+    clearValues[0].color.float32[1] = 0.2f;
+    clearValues[0].color.float32[2] = 0.2f;
+    clearValues[0].color.float32[3] = 0.2f;
+    clearValues[1].depthStencil.depth = 1.0f;
+    clearValues[1].depthStencil.stencil = 0;
 
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
 
     uint32_t currentBuffer;
-//    vkDestroySemaphore(engine->vkDevice, engine->presentCompleteSemaphore, NULL);
-//
-//    VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo;
-//    presentCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-//    presentCompleteSemaphoreCreateInfo.pNext = NULL;
-//    presentCompleteSemaphoreCreateInfo.flags = 0;
-//
     VkResult res;
-//    res = vkCreateSemaphore(engine->vkDevice, &presentCompleteSemaphoreCreateInfo, NULL, &engine->presentCompleteSemaphore);
-//    if (res != VK_SUCCESS) {
-//        printf ("vkCreateSemaphore returned error.\n");
-//        return;
-//    }
-
 
     // Get next image in the swap chain (back/front buffer)
     res = vkAcquireNextImageKHR(engine->vkDevice, engine->swapchain, UINT64_MAX, engine->presentCompleteSemaphore, NULL, &currentBuffer);
@@ -1448,7 +1419,7 @@ static void engine_draw_frame(struct engine* engine) {
     renderPassBeginInfo.renderArea.extent.width = engine->width;
     renderPassBeginInfo.renderArea.extent.height = engine->height;
     renderPassBeginInfo.clearValueCount = 2;
-    renderPassBeginInfo.pClearValues = clear_values;
+    renderPassBeginInfo.pClearValues = clearValues;
 
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1476,7 +1447,6 @@ static void engine_draw_frame(struct engine* engine) {
     imageMemoryBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
     imageMemoryBarrier.srcAccessMask = 0;
     imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    // Put barrier on top
     VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     vkCmdPipelineBarrier(engine->renderCommandBuffer, srcStageFlags, destStageFlags, 0,
@@ -1494,7 +1464,6 @@ static void engine_draw_frame(struct engine* engine) {
     VkDeviceSize offsets[1] = {0};
     vkCmdBindVertexBuffers(engine->renderCommandBuffer, 0, 1, &engine->vertexBuffer, offsets);
     vkCmdDraw(engine->renderCommandBuffer, 12 * 3, 1, 0, 0);
-
     vkCmdEndRenderPass(engine->renderCommandBuffer);
 
     VkImageMemoryBarrier prePresentBarrier;
@@ -1546,16 +1515,16 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    VkPresentInfoKHR present;
-    present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present.pNext = NULL;
-    present.swapchainCount = 1;
-    present.pSwapchains = &engine->swapchain;
-    present.pImageIndices = &currentBuffer;
-    present.pWaitSemaphores = NULL;
-    present.waitSemaphoreCount = 0;
-    present.pResults = NULL;
-    res = vkQueuePresentKHR(engine->queue, &present);
+    VkPresentInfoKHR presentInfo;
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pNext = NULL;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &engine->swapchain;
+    presentInfo.pImageIndices = &currentBuffer;
+    presentInfo.pWaitSemaphores = NULL;
+    presentInfo.waitSemaphoreCount = 0;
+    presentInfo.pResults = NULL;
+    res = vkQueuePresentKHR(engine->queue, &presentInfo);
     if (res != VK_SUCCESS) {
         LOGE ("vkQueuePresentKHR returned error %d.\n", res);
         return;
