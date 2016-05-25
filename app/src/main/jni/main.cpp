@@ -261,6 +261,21 @@ char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &
     return buffer;
 }
 
+static int pfd[2];
+static pthread_t thr;
+
+static void *std_log_thread_main(void*)
+{
+    //This function is from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
+    ssize_t rdsz;
+    char buf[128];
+    while((rdsz = read(pfd[0], buf, sizeof buf - 1)) > 0) {
+        if(buf[rdsz - 1] == '\n') --rdsz;
+        buf[rdsz - 1] = 0;  /* add null-terminator */
+        __android_log_write(ANDROID_LOG_DEBUG, "native-activity-std", buf);
+    }
+    return 0;
+}
 
 /**
  * Initialize an EGL context for the current display.
@@ -269,6 +284,26 @@ static int engine_init_display(struct engine* engine) {
     // initialize Vulkan
 
     LOGI ("Initializing Vulkan\n");
+
+    //Redirect stdio to android log so vulkan validation layer output is not lost.
+    //Redirect code from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
+    /* make stdout line-buffered and stderr unbuffered */
+    setvbuf(stdout, 0, _IOLBF, 0);
+    setvbuf(stderr, 0, _IONBF, 0);
+
+    /* create the pipe and redirect stdout and stderr */
+    pipe(pfd);
+    dup2(pfd[1], 1);
+    dup2(pfd[1], 2);
+
+    /* spawn the logging thread */
+    if(pthread_create(&thr, 0, std_log_thread_main, 0) == -1)
+        return -1;
+    pthread_detach(thr);
+
+    printf("Testing 123");
+
+    //Set the working directory to somewhere that the
 
     char oldcwd[1024];
     char cwd[1024];
@@ -281,6 +316,8 @@ static int engine_init_display(struct engine* engine) {
 
     if (getcwd(cwd, sizeof(cwd)) != NULL)
         LOGI("Current working dir: %s\n", cwd);
+
+    //We will put the working directory back to oldcwd later.
 
     VkResult res;
 
@@ -1389,7 +1426,7 @@ static void engine_draw_frame(struct engine* engine) {
         VkCommandBufferBeginInfo commandBufferBeginInfo = {};
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = NULL;
-        commandBufferBeginInfo.flags = 0;//i==0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        commandBufferBeginInfo.flags = 0;//(i==0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
         commandBufferBeginInfo.pInheritanceInfo = NULL;
         res = vkBeginCommandBuffer(engine->renderCommandBuffer[i], &commandBufferBeginInfo);
         if (res != VK_SUCCESS) {
