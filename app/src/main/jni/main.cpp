@@ -20,6 +20,7 @@
 #include <jni.h>
 #include <errno.h>
 #include <cassert>
+#include <unistd.h>
 
 
 //#include <EGL/egl.h>
@@ -206,7 +207,7 @@ struct engine {
     VkDevice vkDevice;
     VkPhysicalDevice physicalDevice;
     VkCommandBuffer setupCommandBuffer;
-    VkCommandBuffer renderCommandBuffer;
+    VkCommandBuffer renderCommandBuffer[2];
     VkImage depthImage;
     VkImageView depthView;
     VkDeviceMemory depthMemory;
@@ -260,96 +261,49 @@ char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &
     return buffer;
 }
 
+
 /**
  * Initialize an EGL context for the current display.
  */
 static int engine_init_display(struct engine* engine) {
-    // initialize OpenGL ES and EGL
+    // initialize Vulkan
 
-    /*
-     * Here specify the attributes of the desired configuration.
-     * Below, we select an EGLConfig with at least 8 bits per color
-     * component compatible with on-screen windows
-     */
-//    const EGLint attribs[] = {
-//            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-//            EGL_BLUE_SIZE, 8,
-//            EGL_GREEN_SIZE, 8,
-//            EGL_RED_SIZE, 8,
-//            EGL_NONE
-//    };
-//    EGLint w, h, dummy, format;
-//    EGLint numConfigs;
-//    EGLConfig config;
-//    EGLSurface surface;
-//    EGLContext context;
-//
-//    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-//
-//    eglInitialize(display, 0, 0);
-//
-//    /* Here, the application chooses the configuration it desires.
-//     * find the best match if possible, otherwise use the very first one
-//     */
-//    eglChooseConfig(display, attribs, nullptr,0, &numConfigs);
-//    auto supportedConfigs = new EGLConfig[numConfigs];
-//    assert(supportedConfigs);
-//    eglChooseConfig(display, attribs, supportedConfigs, numConfigs, &numConfigs);
-//    assert(numConfigs);
-//    auto i = 0;
-//    for (; i < numConfigs; i++) {
-//        auto& cfg = supportedConfigs[i];
-//        EGLint r, g, b, d;
-//        if (eglGetConfigAttrib(display, cfg, EGL_RED_SIZE, &r)   &&
-//            eglGetConfigAttrib(display, cfg, EGL_GREEN_SIZE, &g) &&
-//            eglGetConfigAttrib(display, cfg, EGL_BLUE_SIZE, &b)  &&
-//            eglGetConfigAttrib(display, cfg, EGL_DEPTH_SIZE, &d) &&
-//            r == 8 && g == 8 && b == 8 && d == 0 ) {
-//
-//            config = supportedConfigs[i];
-//            break;
-//        }
-//    }
-//    if (i == numConfigs) {
-//        config = supportedConfigs[0];
-//    }
-//
-//    /* EGL_NATIVE_VISUAL_ID is an attribute of the EGLConfig that is
-//     * guaranteed to be accepted by ANativeWindow_setBuffersGeometry().
-//     * As soon as we picked a EGLConfig, we can safely reconfigure the
-//     * ANativeWindow buffers to match, using EGL_NATIVE_VISUAL_ID. */
-//    eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &format);
-//    surface = eglCreateWindowSurface(display, config, engine->app->window, NULL);
-//    context = eglCreateContext(display, config, NULL, NULL);
-//
-//    if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
-//        LOGW("Unable to eglMakeCurrent");
-//        return -1;
-//    }
-//
-//    eglQuerySurface(display, surface, EGL_WIDTH, &w);
-//    eglQuerySurface(display, surface, EGL_HEIGHT, &h);
-//
-//    engine->display = display;
-//    engine->context = context;
-//    engine->surface = surface;
-//    engine->width = w;
-//    engine->height = h;
-//    engine->state.angle = 0;
-//
-//    // Check openGL on the system
-//    auto opengl_info = {GL_VENDOR, GL_RENDERER, GL_VERSION, GL_EXTENSIONS};
-//    for (auto name : opengl_info) {
-//        auto info = glGetString(name);
-//        LOGI("OpenGL Info: %s", info);
-//    }
-//    // Initialize GL state.
-//    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST);
-//    glEnable(GL_CULL_FACE);
-//    glShadeModel(GL_SMOOTH);
-//    glDisable(GL_DEPTH_TEST);
+    LOGI ("Initializing Vulkan\n");
+
+    char oldcwd[1024];
+    char cwd[1024];
+    if (getcwd(oldcwd, sizeof(oldcwd)) != NULL)
+        LOGI("Current working dir: %s\n", oldcwd);
+
+    LOGI("internalDataPath: %s\n", engine->app->activity->internalDataPath);
+
+    chdir(engine->app->activity->internalDataPath);
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+        LOGI("Current working dir: %s\n", cwd);
 
     VkResult res;
+
+    uint32_t avalibleLayerCount=0;
+    res = vkEnumerateInstanceLayerProperties(&avalibleLayerCount, NULL);
+    LOGI("There are %d instance layers avalible\n", avalibleLayerCount);
+    VkLayerProperties avalibleLayers[avalibleLayerCount];
+    res = vkEnumerateInstanceLayerProperties(&avalibleLayerCount, avalibleLayers);
+    for (int i =0; i<avalibleLayerCount; i++)
+    {
+        LOGI("%s: %s\n", avalibleLayers[i].layerName, avalibleLayers[i].description);
+    }
+
+    const char *enabledLayerNames[] = {
+            //List any layers you want to enable here.
+        "VK_LAYER_LUNARG_core_validation"
+    };
+
+    const char *enabledInstanceExtensionNames[] = {
+            VK_KHR_SURFACE_EXTENSION_NAME,
+            VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
+    };
+
     VkApplicationInfo app_info;
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pNext = NULL;
@@ -359,13 +313,6 @@ static int engine_init_display(struct engine* engine) {
     app_info.engineVersion = 1;
     app_info.apiVersion = VK_MAKE_VERSION(1, 0, 3);
 
-    const char *enabledInstanceExtensionNames[] = {
-            VK_KHR_SURFACE_EXTENSION_NAME,
-            "VK_KHR_android_surface"
-    };
-
-    uint32_t enabledLayerCount=0;
-
     //Initialize the VkInstanceCreateInfo structure
     VkInstanceCreateInfo inst_info;
     inst_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -374,8 +321,8 @@ static int engine_init_display(struct engine* engine) {
     inst_info.pApplicationInfo = &app_info;
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
-    inst_info.enabledLayerCount = 0;
-    inst_info.ppEnabledLayerNames = NULL;
+    inst_info.enabledLayerCount = 1;
+    inst_info.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateInstance(&inst_info, NULL, &engine->vkInstance);
     if (res == VK_ERROR_INCOMPATIBLE_DRIVER) {
@@ -451,6 +398,16 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
+    avalibleLayerCount=0;
+    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &avalibleLayerCount, NULL);
+    LOGI("There are %d device layers avalible\n", avalibleLayerCount);
+    avalibleLayers[avalibleLayerCount];
+    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &avalibleLayerCount, avalibleLayers);
+    for (int i =0; i<avalibleLayerCount; i++)
+    {
+        LOGI("%s: %s\n", avalibleLayers[i].layerName, avalibleLayers[i].description);
+    }
+
     const char *enabledDeviceExtensionNames[] = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
@@ -465,8 +422,8 @@ static int engine_init_display(struct engine* engine) {
     dci.enabledExtensionCount = 1;
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
-    dci.enabledLayerCount = 0;
-    dci.ppEnabledLayerNames = NULL;
+    dci.enabledLayerCount = 1;
+    dci.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateDevice(engine->physicalDevice, &dci, NULL, &engine->vkDevice);
     if (res == VK_ERROR_INITIALIZATION_FAILED) {
@@ -586,16 +543,17 @@ static int engine_init_display(struct engine* engine) {
     commandBufferAllocateInfo.pNext = NULL;
     commandBufferAllocateInfo.commandPool = commandPool;
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocateInfo.commandBufferCount = 2;
+    commandBufferAllocateInfo.commandBufferCount = 3;
 
-    VkCommandBuffer commandBuffers[2];
+    VkCommandBuffer commandBuffers[3];
     res = vkAllocateCommandBuffers(engine->vkDevice, &commandBufferAllocateInfo, commandBuffers);
     if (res != VK_SUCCESS) {
         LOGE ("vkAllocateCommandBuffers returned error.\n");
         return -1;
     }
     engine->setupCommandBuffer=commandBuffers[0];
-    engine->renderCommandBuffer=commandBuffers[1];
+    engine->renderCommandBuffer[0]=commandBuffers[1];
+    engine->renderCommandBuffer[1]=commandBuffers[2];
 
     LOGI("Command buffers created");
 
@@ -829,7 +787,7 @@ static int engine_init_display(struct engine* engine) {
     VkAttachmentDescription attachments[2];
     attachments[0].format = format;
     attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -1353,6 +1311,12 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
+    LOGI("Restoring working directory");
+    chdir(oldcwd);
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+        LOGI("Current working dir: %s\n", cwd);
+
     engine->vulkanSetupOK=true;
     LOGI ("Vulkan setup complete");
 
@@ -1383,18 +1347,18 @@ static void engine_draw_frame(struct engine* engine) {
 
     if (!engine->vulkanSetupOK)
     {
-        LOGI("engine_draw_frame %d", engine->frame);
-        LOGI("Vulkan not ready");
+//        LOGI("engine_draw_frame %d", engine->frame);
+//        LOGI("Vulkan not ready");
         return;
     }
 
     VkClearValue clearValues[2];
-    clearValues[0].color.float32[0] = 0.2f;
-    clearValues[0].color.float32[1] = 0.2f;
-    clearValues[0].color.float32[2] = 0.2f;
-    clearValues[0].color.float32[3] = 0.2f;
-    clearValues[1].depthStencil.depth = 1.0f;
-    clearValues[1].depthStencil.stencil = 0;
+//    clearValues[0].color.float32[0] = 0.2f;
+//    clearValues[0].color.float32[1] = 0.2f;
+//    clearValues[0].color.float32[2] = 0.2f;
+//    clearValues[0].color.float32[3] = 0.2f;
+    clearValues[0].depthStencil.depth = 1.0f;
+    clearValues[0].depthStencil.stencil = 0;
 
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
@@ -1409,101 +1373,137 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    VkRenderPassBeginInfo renderPassBeginInfo;
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.pNext = NULL;
-    renderPassBeginInfo.renderPass = engine->renderPass;
-    renderPassBeginInfo.framebuffer = engine->framebuffers[currentBuffer];
-    renderPassBeginInfo.renderArea.offset.x = 0;
-    renderPassBeginInfo.renderArea.offset.y = 0;
-    renderPassBeginInfo.renderArea.extent.width = engine->width;
-    renderPassBeginInfo.renderArea.extent.height = engine->height;
-    renderPassBeginInfo.clearValueCount = 2;
-    renderPassBeginInfo.pClearValues = clearValues;
+    for (int i = 0; i<2; i++) {
+        VkRenderPassBeginInfo renderPassBeginInfo;
+        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.pNext = NULL;
+        renderPassBeginInfo.renderPass = engine->renderPass;
+        renderPassBeginInfo.framebuffer = engine->framebuffers[currentBuffer];
+        renderPassBeginInfo.renderArea.offset.x = 0;
+        renderPassBeginInfo.renderArea.offset.y = 0;
+        renderPassBeginInfo.renderArea.extent.width = engine->width;
+        renderPassBeginInfo.renderArea.extent.height = engine->height;
+        renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.pClearValues = clearValues;
 
-    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    commandBufferBeginInfo.pNext = NULL;
-    commandBufferBeginInfo.flags = 0;
-    commandBufferBeginInfo.pInheritanceInfo = NULL;
-    res = vkBeginCommandBuffer(engine->renderCommandBuffer, &commandBufferBeginInfo);
-    if (res != VK_SUCCESS) {
-        printf ("vkBeginCommandBuffer returned error.\n");
-        return;
-    }
+        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = NULL;
+        commandBufferBeginInfo.flags = 0;//i==0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        commandBufferBeginInfo.pInheritanceInfo = NULL;
+        res = vkBeginCommandBuffer(engine->renderCommandBuffer[i], &commandBufferBeginInfo);
+        if (res != VK_SUCCESS) {
+            printf("vkBeginCommandBuffer returned error.\n");
+            return;
+        }
 
-    VkImageMemoryBarrier imageMemoryBarrier;
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = engine->swapChainImages[currentBuffer];
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imageMemoryBarrier.subresourceRange.levelCount = 1;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
-    imageMemoryBarrier.subresourceRange.layerCount = 1;
-    imageMemoryBarrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.srcAccessMask = 0;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    vkCmdPipelineBarrier(engine->renderCommandBuffer, srcStageFlags, destStageFlags, 0,
-                         0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+        VkImageMemoryBarrier imageMemoryBarrier;
+        imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imageMemoryBarrier.pNext = NULL;
+        imageMemoryBarrier.image = engine->swapChainImages[currentBuffer];
+        imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
+        imageMemoryBarrier.subresourceRange.levelCount = 1;
+        imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
+        imageMemoryBarrier.subresourceRange.layerCount = 1;
+        imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        imageMemoryBarrier.srcAccessMask = 0;
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        vkCmdPipelineBarrier(engine->renderCommandBuffer[i], srcStageFlags, destStageFlags, 0,
+                             0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 
-    vkCmdBeginRenderPass(engine->renderCommandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(engine->renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, engine->pipeline);
-    vkCmdBindDescriptorSets(engine->renderCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            engine->pipelineLayout, 0, 1,
-                            engine->descriptorSets, 0, NULL);
+        vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+                             VK_SUBPASS_CONTENTS_INLINE);
+//        vkCmdBindPipeline(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+//                          engine->pipeline);
+//        vkCmdBindDescriptorSets(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+//                                engine->pipelineLayout, 0, 1,
+//                                engine->descriptorSets, 0, NULL);
 
 //    vkCmdSetViewport(engine->renderCommandBuffer, 0, 1, &viewport);
 //    vkCmdSetScissor(engine->renderCommandBuffer, 0, 1, &scissor);
 
-    VkDeviceSize offsets[1] = {0};
-    vkCmdBindVertexBuffers(engine->renderCommandBuffer, 0, 1, &engine->vertexBuffer, offsets);
-    vkCmdDraw(engine->renderCommandBuffer, 12 * 3, 1, 0, 0);
-    vkCmdEndRenderPass(engine->renderCommandBuffer);
+//        VkDeviceSize offsets[1] = {0};
+//        vkCmdBindVertexBuffers(engine->renderCommandBuffer[i], 0, 1, &engine->vertexBuffer, offsets);
+//        vkCmdDraw(engine->renderCommandBuffer[i], 12 * 3, 1, 0, 0);
 
-    VkImageMemoryBarrier prePresentBarrier;
-    prePresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    prePresentBarrier.pNext = NULL;
-    prePresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    prePresentBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-    prePresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    prePresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    prePresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    prePresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    prePresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    prePresentBarrier.subresourceRange.baseMipLevel = 0;
-    prePresentBarrier.subresourceRange.levelCount = 1;
-    prePresentBarrier.subresourceRange.baseArrayLayer = 0;
-    prePresentBarrier.subresourceRange.layerCount = 1;
-    prePresentBarrier.image = engine->swapChainImages[currentBuffer];
-    vkCmdPipelineBarrier(engine->renderCommandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
-                         NULL, 1, &prePresentBarrier);
+        VkClearAttachment clear;
+        clear.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        clear.clearValue.color.float32[0]=i;
+        clear.clearValue.color.float32[1]=0.5;
+        clear.clearValue.color.float32[2]=0;
+        clear.clearValue.color.float32[3]=0;
+        clear.colorAttachment=0;
+        VkClearRect clearRect;
+        clearRect.baseArrayLayer=0;
+        clearRect.layerCount=1;
+        clearRect.rect.extent.width=engine->width/4*2;
+        clearRect.rect.extent.height=engine->height/4*2;
+        clearRect.rect.offset.x=engine->width/4 - (i * 100);
+        clearRect.rect.offset.y=engine->height/4;
+        vkCmdClearAttachments(engine->renderCommandBuffer[i], 1, &clear, 1, &clearRect);
 
-    res = vkEndCommandBuffer(engine->renderCommandBuffer);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkEndCommandBuffer returned error %d.\n", res);
-        return;
+        vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+
+        VkImageMemoryBarrier prePresentBarrier;
+        prePresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        prePresentBarrier.pNext = NULL;
+        prePresentBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        prePresentBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        prePresentBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        prePresentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        prePresentBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        prePresentBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        prePresentBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        prePresentBarrier.subresourceRange.baseMipLevel = 0;
+        prePresentBarrier.subresourceRange.levelCount = 1;
+        prePresentBarrier.subresourceRange.baseArrayLayer = 0;
+        prePresentBarrier.subresourceRange.layerCount = 1;
+        prePresentBarrier.image = engine->swapChainImages[currentBuffer];
+        vkCmdPipelineBarrier(engine->renderCommandBuffer[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
+                             NULL, 1, &prePresentBarrier);
+
+        res = vkEndCommandBuffer(engine->renderCommandBuffer[i]);
+        if (res != VK_SUCCESS) {
+            LOGE ("vkEndCommandBuffer returned error %d.\n", res);
+            return;
+        }
     }
 
     VkPipelineStageFlags pipe_stage_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    VkSubmitInfo submitInfo[1];
+    VkSubmitInfo submitInfo[2];
     submitInfo[0].pNext = NULL;
     submitInfo[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo[0].waitSemaphoreCount = 1;
+    submitInfo[0].waitSemaphoreCount = 1; //Only the first command buffer should wait on a semaphore,
     submitInfo[0].pWaitSemaphores = &engine->presentCompleteSemaphore;
     submitInfo[0].pWaitDstStageMask = &pipe_stage_flags;
-    submitInfo[0].commandBufferCount = 1;
-    submitInfo[0].pCommandBuffers = &engine->renderCommandBuffer;
+    submitInfo[0].commandBufferCount = 2;
+    submitInfo[0].pCommandBuffers = engine->renderCommandBuffer;
     submitInfo[0].signalSemaphoreCount = 0;
     submitInfo[0].pSignalSemaphores = NULL;
+    submitInfo[1].pNext = NULL;
+    submitInfo[1].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo[1].waitSemaphoreCount = 0; //Only the first command buffer should wait on a semaphore,
+    submitInfo[1].pWaitSemaphores = NULL;
+    submitInfo[1].pWaitDstStageMask = &pipe_stage_flags;
+    submitInfo[1].commandBufferCount = 1;
+    submitInfo[1].pCommandBuffers = &engine->renderCommandBuffer[1];
+    submitInfo[1].signalSemaphoreCount = 0;
+    submitInfo[1].pSignalSemaphores = NULL;
 
     res = vkQueueSubmit(engine->queue, 1, submitInfo, VK_NULL_HANDLE);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkQueueSubmit returned error %d.\n", res);
+        return;
+    }
+
+    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
     if (res != VK_SUCCESS) {
         LOGE ("vkQueueSubmit returned error %d.\n", res);
         return;

@@ -1,5 +1,0 @@
-See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityArmeabi-v7aDebugSharedLibrary/output.txt for all output for linkNative-activityArmeabi-v7aDebugSharedLibrary.
-linking libnative-activity.so successful.
-arm-linux-androideabi-g++: warning: /home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/intermediates/objectFiles/armeabi-v7aDebugSharedLibrary/native-activityMainC/5ice3mt84bit32xd5hxso6fa6/android_native_app_glue.o: linker input file unused because linking not done
-
-Finished linkNative-activityArmeabi-v7aDebugSharedLibrary, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityArmeabi-v7aDebugSharedLibrary/output.txt.

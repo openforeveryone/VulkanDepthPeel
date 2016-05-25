@@ -1,5 +1,0 @@
-See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityX86_64DebugSharedLibrary/output.txt for all output for linkNative-activityX86_64DebugSharedLibrary.
-linking libnative-activity.so successful.
-x86_64-linux-android-g++: warning: /home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/intermediates/objectFiles/x86_64DebugSharedLibrary/native-activityMainC/5ice3mt84bit32xd5hxso6fa6/android_native_app_glue.o: linker input file unused because linking not done
-
-Finished linkNative-activityX86_64DebugSharedLibrary, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/linkNative-activityX86_64DebugSharedLibrary/output.txt.

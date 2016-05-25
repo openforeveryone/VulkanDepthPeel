@@ -1,4 +1,0 @@
-See file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/compileNative-activityArmeabiDebugSharedLibraryNative-activityMainC/output.txt for all output for compileNative-activityArmeabiDebugSharedLibraryNative-activityMainC.
-compiling android_native_app_glue.c successful.
-
-Finished compileNative-activityArmeabiDebugSharedLibraryNative-activityMainC, see full log file:///home/matt/Vulkan/android/vulkan-test1/nativeactivity/build/tmp/compileNative-activityArmeabiDebugSharedLibraryNative-activityMainC/output.txt.
