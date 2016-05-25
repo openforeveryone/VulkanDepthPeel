@@ -321,14 +321,14 @@ static int engine_init_display(struct engine* engine) {
 
     VkResult res;
 
-    uint32_t avalibleLayerCount=0;
-    res = vkEnumerateInstanceLayerProperties(&avalibleLayerCount, NULL);
-    LOGI("There are %d instance layers avalible\n", avalibleLayerCount);
-    VkLayerProperties avalibleLayers[avalibleLayerCount];
-    res = vkEnumerateInstanceLayerProperties(&avalibleLayerCount, avalibleLayers);
-    for (int i =0; i<avalibleLayerCount; i++)
+    uint32_t availableLayerCount =0;
+    res = vkEnumerateInstanceLayerProperties(&availableLayerCount, NULL);
+    LOGI("There are %d instance layers avalible\n", availableLayerCount);
+    VkLayerProperties availableLayers[availableLayerCount];
+    res = vkEnumerateInstanceLayerProperties(&availableLayerCount, availableLayers);
+    for (int i =0; i < availableLayerCount; i++)
     {
-        LOGI("%s: %s\n", avalibleLayers[i].layerName, avalibleLayers[i].description);
+        LOGI("%s: %s\n", availableLayers[i].layerName, availableLayers[i].description);
     }
 
     const char *enabledLayerNames[] = {
@@ -435,14 +435,15 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
-    avalibleLayerCount=0;
-    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &avalibleLayerCount, NULL);
-    LOGI("There are %d device layers avalible\n", avalibleLayerCount);
-    avalibleLayers[avalibleLayerCount];
-    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &avalibleLayerCount, avalibleLayers);
-    for (int i =0; i<avalibleLayerCount; i++)
+    availableLayerCount =0;
+    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &availableLayerCount, NULL);
+    LOGI("There are %d device layers avalible\n", availableLayerCount);
+    availableLayers[availableLayerCount];
+    res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &availableLayerCount,
+                                           availableLayers);
+    for (int i =0; i < availableLayerCount; i++)
     {
-        LOGI("%s: %s\n", avalibleLayers[i].layerName, avalibleLayers[i].description);
+        LOGI("%s: %s\n", availableLayers[i].layerName, availableLayers[i].description);
     }
 
     const char *enabledDeviceExtensionNames[] = {
@@ -470,7 +471,7 @@ static int engine_init_display(struct engine* engine) {
         LOGE ("vkCreateDevice returned error %d.\n", res);
         return -1;
     }
-    LOGI("vkCreateDevice sucsesful");
+    LOGI("vkCreateDevice successful");
 
 
     //Setup the swapchain
