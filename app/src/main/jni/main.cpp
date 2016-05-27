@@ -46,49 +46,50 @@ struct Vertex{
 };
 
 #define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
+#define XYZp5(_x_, _y_, _z_) (_x_), (_y_), (_z_), 0.1f
 
 static const struct Vertex vertexData[] = {
-        {XYZ1(-1, -1, -1), XYZ1(0.f, 0.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZ1(1.f, 0.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZ1(1.f, 0.f, 0.f)},
-        {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
+        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
+        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
+        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
+        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
+        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
+        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
 
-        {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZ1(0.f, 1.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZ1(0.f, 1.f, 1.f)},
-        {XYZ1(1, 1, 1), XYZ1(1.f, 1.f, 1.f)},
+        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
+        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
+        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
+        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
+        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
+        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
 
-        {XYZ1(1, 1, 1), XYZ1(1.f, 1.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-        {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZ1(1.f, 0.f, 0.f)},
+        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
+        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
+        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
+        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
+        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
+        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
 
-        {XYZ1(-1, 1, 1), XYZ1(0.f, 1.f, 1.f)},
-        {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
-        {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-        {XYZ1(-1, -1, -1), XYZ1(0.f, 0.f, 0.f)},
+        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
+        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
+        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
+        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
+        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
+        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
 
-        {XYZ1(1, 1, 1), XYZ1(1.f, 1.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZ1(0.f, 1.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-        {XYZ1(1, 1, -1), XYZ1(1.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, 1), XYZ1(0.f, 1.f, 1.f)},
-        {XYZ1(-1, 1, -1), XYZ1(0.f, 1.f, 0.f)},
+        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
+        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
+        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
+        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
+        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
+        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
 
-        {XYZ1(1, -1, 1), XYZ1(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, -1), XYZ1(1.f, 0.f, 0.f)},
-        {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-        {XYZ1(-1, -1, 1), XYZ1(0.f, 0.f, 1.f)},
-        {XYZ1(1, -1, -1), XYZ1(1.f, 0.f, 0.f)},
-        {XYZ1(-1, -1, -1), XYZ1(0.f, 0.f, 0.f)},
+        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
+        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
+        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
+        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
+        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
+        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
 };
 
 /*
@@ -218,7 +219,7 @@ struct engine {
     VkFramebuffer *framebuffers;
     uint8_t *uniformMappedMemory;
     VkSemaphore presentCompleteSemaphore;
-    VkRenderPass renderPass;
+    VkRenderPass renderPass[2];
     VkPipelineLayout pipelineLayout;
     VkDescriptorSet *descriptorSets;
     VkBuffer vertexBuffer;
@@ -228,7 +229,7 @@ struct engine {
     int32_t width;
     int32_t height;
     struct saved_state state;
-    VkPipeline pipeline;
+    VkPipeline pipeline[2];
 
     const int NUM_SAMPLES = 1;
 };
@@ -825,7 +826,7 @@ static int engine_init_display(struct engine* engine) {
     VkAttachmentDescription attachments[2];
     attachments[0].format = format;
     attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -835,12 +836,31 @@ static int engine_init_display(struct engine* engine) {
     attachments[1].format = depth_format;
     attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].flags = 0;
+
+    attachments[2].format = format;
+    attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[2].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[2].flags = 0;
+    attachments[3].format = depth_format;
+    attachments[3].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[3].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[3].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachments[3].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachments[3].flags = 0;
 
     VkAttachmentReference color_reference;
     color_reference.attachment = 0;
@@ -862,17 +882,32 @@ static int engine_init_display(struct engine* engine) {
     subpass.preserveAttachmentCount = 0;
     subpass.pPreserveAttachments = NULL;
 
-    VkRenderPassCreateInfo rp_info;
-    rp_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    rp_info.pNext = NULL;
-    rp_info.attachmentCount = 2;
-    rp_info.pAttachments = attachments;
-    rp_info.subpassCount = 1;
-    rp_info.pSubpasses = &subpass;
-    rp_info.dependencyCount = 0;
-    rp_info.pDependencies = NULL;
+    VkRenderPassCreateInfo rp_info[2];
+    rp_info[0].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rp_info[0].pNext = NULL;
+    rp_info[0].attachmentCount = 2;
+    rp_info[0].pAttachments = attachments;
+    rp_info[0].subpassCount = 1;
+    rp_info[0].pSubpasses = &subpass;
+    rp_info[0].dependencyCount = 0;
+    rp_info[0].pDependencies = NULL;
 
-    res = vkCreateRenderPass(engine->vkDevice, &rp_info, NULL, &engine->renderPass);
+    rp_info[1].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rp_info[1].pNext = NULL;
+    rp_info[1].attachmentCount = 2;
+    rp_info[1].pAttachments = &attachments[2];
+    rp_info[1].subpassCount = 1;
+    rp_info[1].pSubpasses = &subpass;
+    rp_info[1].dependencyCount = 0;
+    rp_info[1].pDependencies = NULL;
+
+    res = vkCreateRenderPass(engine->vkDevice, &rp_info[0], NULL, &engine->renderPass[0]);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkCreateRenderPass returned error. %d\n", res);
+        return -1;
+    }
+
+    res = vkCreateRenderPass(engine->vkDevice, &rp_info[1], NULL, &engine->renderPass[1]);
     if (res != VK_SUCCESS) {
         LOGE ("vkCreateRenderPass returned error. %d\n", res);
         return -1;
@@ -985,7 +1020,7 @@ static int engine_init_display(struct engine* engine) {
         VkFramebufferCreateInfo fb_info;
         fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fb_info.pNext = NULL;
-        fb_info.renderPass = engine->renderPass;
+        fb_info.renderPass = engine->renderPass[0];
         fb_info.attachmentCount = 2;
         fb_info.pAttachments = imageViewAttachments;
         fb_info.width = swapChainExtent.width;
@@ -1259,11 +1294,11 @@ static int engine_init_display(struct engine* engine) {
     cb.pNext = NULL;
     VkPipelineColorBlendAttachmentState att_state[1];
     att_state[0].colorWriteMask = 0xf;
-    att_state[0].blendEnable = VK_FALSE;
+    att_state[0].blendEnable = VK_TRUE;
     att_state[0].alphaBlendOp = VK_BLEND_OP_ADD;
     att_state[0].colorBlendOp = VK_BLEND_OP_ADD;
-    att_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    att_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    att_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    att_state[0].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     att_state[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     att_state[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     cb.attachmentCount = 1;
@@ -1329,10 +1364,17 @@ static int engine_init_display(struct engine* engine) {
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.stageCount = 2;
-    pipelineInfo.renderPass = engine->renderPass;
+    pipelineInfo.renderPass = engine->renderPass[0];
     pipelineInfo.subpass = 0;
 
-    res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &engine->pipeline);
+    res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &engine->pipeline[0]);
+    if (res != VK_SUCCESS) {
+        printf ("vkCreateGraphicsPipelines re\turned error %d.\n", res);
+        return -1;
+    }
+
+    pipelineInfo.renderPass = engine->renderPass[1];
+    res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &engine->pipeline[1]);
     if (res != VK_SUCCESS) {
         printf ("vkCreateGraphicsPipelines re\turned error %d.\n", res);
         return -1;
@@ -1390,13 +1432,19 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    VkClearValue clearValues[2];
-//    clearValues[0].color.float32[0] = 0.2f;
-//    clearValues[0].color.float32[1] = 0.2f;
-//    clearValues[0].color.float32[2] = 0.2f;
-//    clearValues[0].color.float32[3] = 0.2f;
-    clearValues[0].depthStencil.depth = 1.0f;
-    clearValues[0].depthStencil.stencil = 0;
+    VkClearValue clearValues[4];
+    clearValues[0].color.float32[0] = 0.2f;
+    clearValues[0].color.float32[1] = 0.2f;
+    clearValues[0].color.float32[2] = 0.2f;
+    clearValues[0].color.float32[3] = 0.2f;
+    clearValues[1].depthStencil.depth = 1.0f;
+    clearValues[1].depthStencil.stencil = 0;
+    clearValues[2].color.float32[0] = 1.0f;
+    clearValues[2].color.float32[1] = 0.0f;
+    clearValues[2].color.float32[2] = 0.0f;
+    clearValues[2].color.float32[3] = 0.0f;
+    clearValues[3].depthStencil.depth = 1.0f;
+    clearValues[3].depthStencil.stencil = 0;
 
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
@@ -1415,19 +1463,20 @@ static void engine_draw_frame(struct engine* engine) {
         VkRenderPassBeginInfo renderPassBeginInfo;
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.pNext = NULL;
-        renderPassBeginInfo.renderPass = engine->renderPass;
+        renderPassBeginInfo.renderPass = engine->renderPass[i];
         renderPassBeginInfo.framebuffer = engine->framebuffers[currentBuffer];
         renderPassBeginInfo.renderArea.offset.x = 0;
         renderPassBeginInfo.renderArea.offset.y = 0;
         renderPassBeginInfo.renderArea.extent.width = engine->width;
         renderPassBeginInfo.renderArea.extent.height = engine->height;
-        renderPassBeginInfo.clearValueCount = 1;
-        renderPassBeginInfo.pClearValues = clearValues;
+        renderPassBeginInfo.clearValueCount = 2;
+        renderPassBeginInfo.pClearValues = clearValues;// + (i*2);
 
         VkCommandBufferBeginInfo commandBufferBeginInfo = {};
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = NULL;
-        commandBufferBeginInfo.flags = 0;//(i==0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        commandBufferBeginInfo.flags = (i == 0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+        commandBufferBeginInfo.flags = 0;
         commandBufferBeginInfo.pInheritanceInfo = NULL;
         res = vkBeginCommandBuffer(engine->renderCommandBuffer[i], &commandBufferBeginInfo);
         if (res != VK_SUCCESS) {
@@ -1457,18 +1506,21 @@ static void engine_draw_frame(struct engine* engine) {
 
         vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
                              VK_SUBPASS_CONTENTS_INLINE);
-//        vkCmdBindPipeline(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                          engine->pipeline);
-//        vkCmdBindDescriptorSets(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-//                                engine->pipelineLayout, 0, 1,
-//                                engine->descriptorSets, 0, NULL);
+        if (i == 1) {
+            vkCmdBindPipeline(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              engine->pipeline[i]);
+            vkCmdBindDescriptorSets(engine->renderCommandBuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    engine->pipelineLayout, 0, 1,
+                                    engine->descriptorSets, 0, NULL);
 
 //    vkCmdSetViewport(engine->renderCommandBuffer, 0, 1, &viewport);
 //    vkCmdSetScissor(engine->renderCommandBuffer, 0, 1, &scissor);
 
-//        VkDeviceSize offsets[1] = {0};
-//        vkCmdBindVertexBuffers(engine->renderCommandBuffer[i], 0, 1, &engine->vertexBuffer, offsets);
-//        vkCmdDraw(engine->renderCommandBuffer[i], 12 * 3, 1, 0, 0);
+            VkDeviceSize offsets[1] = {0};
+            vkCmdBindVertexBuffers(engine->renderCommandBuffer[i], 0, 1, &engine->vertexBuffer,
+                                   offsets);
+            vkCmdDraw(engine->renderCommandBuffer[i], 12 * 3, 1, 0, 0);
+        }
 
         VkClearAttachment clear;
         clear.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1484,7 +1536,7 @@ static void engine_draw_frame(struct engine* engine) {
         clearRect.rect.extent.height=engine->height/4*2;
         clearRect.rect.offset.x=engine->width/4 - (i * 100);
         clearRect.rect.offset.y=engine->height/4;
-        vkCmdClearAttachments(engine->renderCommandBuffer[i], 1, &clear, 1, &clearRect);
+//        vkCmdClearAttachments(engine->renderCommandBuffer[i], 1, &clear, 1, &clearRect);
 
         vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
 
@@ -1540,18 +1592,34 @@ static void engine_draw_frame(struct engine* engine) {
         LOGE ("vkQueueSubmit returned error %d.\n", res);
         return;
     }
+//
+//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
+//    if (res != VK_SUCCESS) {
+//        LOGE ("vkQueueSubmit returned error %d.\n", res);
+//        return;
+//    }
+//
+//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
+//    if (res != VK_SUCCESS) {
+//        LOGE ("vkQueueSubmit returned error %d.\n", res);
+//        return;
+//    }
+//
+//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
+//    if (res != VK_SUCCESS) {
+//        LOGE ("vkQueueSubmit returned error %d.\n", res);
+//        return;
+//    }
 
-    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkQueueSubmit returned error %d.\n", res);
-        return;
-    }
+    LOGI ("Waiting.\n");
 
     res = vkQueueWaitIdle(engine->queue);
     if (res != VK_SUCCESS) {
         LOGE ("vkQueueSubmit returned error %d.\n", res);
         return;
     }
+
+    LOGI ("Presentng.\n");
 
     VkPresentInfoKHR presentInfo;
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1568,7 +1636,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-//    LOGI ("Finished frame %d.\n", engine->frame);
+    LOGI ("Finished frame %d.\n", engine->frame);
     engine->frame++;
 }
 
