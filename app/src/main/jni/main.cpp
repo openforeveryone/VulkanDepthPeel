@@ -17,172 +17,30 @@
 
 //BEGIN_INCLUDE(all)
 #include <initializer_list>
-#include <jni.h>
-#include <errno.h>
+//#include <jni.h>
+//#include <errno.h>
 #include <cassert>
 #include <unistd.h>
 
-
-//#include <EGL/egl.h>
-//#include <GLES/gl.h>
-
-#define VK_USE_PLATFORM_ANDROID_KHR
-#include <vulkan/vulkan.h>
-#include <vulkan/vk_platform.h>
 #include <stdio.h>
-#include <math.h>
+#include "matrix.h"
+#include "models.h"
+#include "stdredirect.h"
 
 #include <android/sensor.h>
 #include <android/log.h>
 #include <android_native_app_glue.h>
 
+#define VK_USE_PLATFORM_ANDROID_KHR
+#include <vulkan/vulkan.h>
+#include <vulkan/vk_platform.h>
+
 #define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
 #define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
 #define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "native-activity", __VA_ARGS__))
 
-struct Vertex{
-    float posX, posY, posZ, posW; // Position data
-    float r, g, b, a;             // Color
-};
 
-#define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
-#define XYZp5(_x_, _y_, _z_) (_x_), (_y_), (_z_), 0.1f
-
-static const struct Vertex vertexData[] = {
-        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
-        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
-
-        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
-        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
-
-        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
-        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
-        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
-
-        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
-        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
-        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
-        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
-        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
-
-        {XYZ1(1, 1, 1), XYZp5(1.f, 1.f, 1.f)},
-        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
-        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
-        {XYZ1(1, 1, -1), XYZp5(1.f, 1.f, 0.f)},
-        {XYZ1(-1, 1, 1), XYZp5(0.f, 1.f, 1.f)},
-        {XYZ1(-1, 1, -1), XYZp5(0.f, 1.f, 0.f)},
-
-        {XYZ1(1, -1, 1), XYZp5(1.f, 0.f, 1.f)},
-        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
-        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
-        {XYZ1(-1, -1, 1), XYZp5(0.f, 0.f, 1.f)},
-        {XYZ1(1, -1, -1), XYZp5(1.f, 0.f, 0.f)},
-        {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
-};
-
-/*
- * Simulates desktop's glRotatef. The matrix is returned in column-major
- * order.
- */
-void rotate_matrix(double angle, double x, double y, double z, float *R) {
-    double radians, c, s, c1, u[3], length;
-    int i, j;
-
-    radians = (angle * M_PI) / 180.0;
-
-    c = cos(radians);
-    s = sin(radians);
-
-    c1 = 1.0 - cos(radians);
-
-    length = sqrt(x * x + y * y + z * z);
-
-    u[0] = x / length;
-    u[1] = y / length;
-    u[2] = z / length;
-
-    for (i = 0; i < 16; i++) {
-        R[i] = 0.0;
-    }
-
-    R[15] = 1.0;
-
-    for (i = 0; i < 3; i++) {
-        R[i * 4 + (i + 1) % 3] = u[(i + 2) % 3] * s;
-        R[i * 4 + (i + 2) % 3] = -u[(i + 1) % 3] * s;
-    }
-
-    for (i = 0; i < 3; i++) {
-        for (j = 0; j < 3; j++) {
-            R[i * 4 + j] += c1 * u[i] * u[j] + (i == j ? c : 0.0);
-        }
-    }
-}
-
-/*
- * Simulates gluPerspectiveMatrix
- */
-void perspective_matrix(double fovy, double aspect, double znear, double zfar, float *P) {
-    int i;
-    double f;
-
-    f = 1.0/tan(fovy * 0.5);
-
-    for (i = 0; i < 16; i++) {
-        P[i] = 0.0;
-    }
-
-    P[0] = f / aspect;
-    P[5] = f;
-    P[10] = (znear + zfar) / (znear - zfar);
-    P[11] = -1.0;
-    P[14] = (2.0 * znear * zfar) / (znear - zfar);
-    P[15] = 0.0;
-}
-/*
- * Multiplies A by B and writes out to C. All matrices are 4x4 and column
- * major. In-place multiplication is supported.
- */
-void multiply_matrix(float *A, float *B, float *C) {
-    int i, j, k;
-    float aTmp[16];
-
-    for (i = 0; i < 4; i++) {
-        for (j = 0; j < 4; j++) {
-            aTmp[j * 4 + i] = 0.0;
-
-            for (k = 0; k < 4; k++) {
-                aTmp[j * 4 + i] += A[k * 4 + i] * B[j * 4 + k];
-            }
-        }
-    }
-
-    memcpy(C, aTmp, sizeof(aTmp));
-}
-
-void identity_matrix(float *matrix) {
-    float aTmp[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-    memcpy(matrix, aTmp, sizeof(aTmp));
-}
-
-void translate_matrix(double x, double y, double z, float *matrix) {
-    identity_matrix(matrix);
-    matrix[12]=x;
-    matrix[13]=y;
-    matrix[14]=z;
-}
+void createSecondaryBuffers(struct engine* engine);
 
 /**
  * Our saved state data.
@@ -235,7 +93,6 @@ struct engine {
     const int NUM_SAMPLES = 1;
 };
 
-
 char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &size)
 {
     ok=false;
@@ -263,21 +120,6 @@ char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &
     return buffer;
 }
 
-static int pfd[2];
-static pthread_t thr;
-
-static void *std_log_thread_main(void*)
-{
-    //This function is from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
-    ssize_t rdsz;
-    char buf[128];
-    while((rdsz = read(pfd[0], buf, sizeof buf - 1)) > 0) {
-        if(buf[rdsz - 1] == '\n') --rdsz;
-        buf[rdsz - 1] = 0;  /* add null-terminator */
-        __android_log_write(ANDROID_LOG_DEBUG, "native-activity-std", buf);
-    }
-    return 0;
-}
 
 /**
  * Initialize an EGL context for the current display.
@@ -290,20 +132,7 @@ static int engine_init_display(struct engine* engine) {
     //Redirect stdio to android log so vulkan validation layer output is not lost.
     //Redirect code from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
     /* make stdout line-buffered and stderr unbuffered */
-    setvbuf(stdout, 0, _IOLBF, 0);
-    setvbuf(stderr, 0, _IONBF, 0);
-
-    /* create the pipe and redirect stdout and stderr */
-    pipe(pfd);
-    dup2(pfd[1], 1);
-    dup2(pfd[1], 2);
-
-    /* spawn the logging thread */
-    if(pthread_create(&thr, 0, std_log_thread_main, 0) == -1)
-        return -1;
-    pthread_detach(thr);
-
-    printf("Testing 123");
+    redirectStdIO();
 
     //Set the working directory to somewhere that the
 
@@ -1307,7 +1136,7 @@ static int engine_init_display(struct engine* engine) {
     cb.pNext = NULL;
     VkPipelineColorBlendAttachmentState att_state[1];
     att_state[0].colorWriteMask = 0xf;
-    att_state[0].blendEnable = VK_TRUE;
+    att_state[0].blendEnable = VK_FALSE;
     att_state[0].alphaBlendOp = VK_BLEND_OP_ADD;
     att_state[0].colorBlendOp = VK_BLEND_OP_ADD;
     att_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -1338,7 +1167,7 @@ static int engine_init_display(struct engine* engine) {
     ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     ds.pNext = NULL;
     ds.flags = 0;
-    ds.depthTestEnable = VK_FALSE;
+    ds.depthTestEnable = VK_TRUE;
     ds.depthWriteEnable = VK_TRUE;
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
@@ -1404,6 +1233,8 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
+    createSecondaryBuffers(engine);
+
     LOGI("Restoring working directory");
     chdir(oldcwd);
 
@@ -1414,6 +1245,72 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("Vulkan setup complete");
 
     return 0;
+}
+
+void createSecondaryBuffers(struct engine* engine)
+{
+    LOGI("Creating Secondary Buffers");
+    for (int i = 0; i< engine->swapchainImageCount; i++) {
+        VkResult res;
+        VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
+        commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+        commandBufferInheritanceInfo.pNext = 0;
+        commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+        commandBufferInheritanceInfo.subpass = 0;
+        commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
+        commandBufferInheritanceInfo.occlusionQueryEnable = 0;
+        commandBufferInheritanceInfo.queryFlags = 0;
+        commandBufferInheritanceInfo.pipelineStatistics = 0;
+
+        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = NULL;
+        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
+                                       VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
+        res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[i], &commandBufferBeginInfo);
+        if (res != VK_SUCCESS) {
+            printf("vkBeginCommandBuffer returned error.\n");
+            return;
+        }
+
+//        VkClearAttachment clear;
+//        clear.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+//        clear.clearValue.color.float32[0] = 0;
+//        clear.clearValue.color.float32[1] = 0.5;
+//        clear.clearValue.color.float32[2] = 0;
+//        clear.clearValue.color.float32[3] = 0;
+//        clear.colorAttachment = 0;
+//        VkClearRect clearRect;
+//        clearRect.baseArrayLayer = 0;
+//        clearRect.layerCount = 1;
+//        clearRect.rect.extent.width = engine->width / 4 * 2;
+//        clearRect.rect.extent.height = engine->height / 4 * 2;
+//        clearRect.rect.offset.x = engine->width / 4 - (i * 100);
+//        clearRect.rect.offset.y = engine->height / 4;
+//    vkCmdClearAttachments(engine->secondaryCommandBuffers[0], 1, &clear, 1, &clearRect);
+
+
+        for (int object = 0; object < 100; object++) {
+            vkCmdBindPipeline(engine->secondaryCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              engine->pipeline[0]);
+            vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    engine->pipelineLayout, 0, 1,
+                                    engine->descriptorSets, 0, NULL);
+
+            VkDeviceSize offsets[1] = {0};
+            vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[i], 0, 1, &engine->vertexBuffer,
+                                   offsets);
+            vkCmdDraw(engine->secondaryCommandBuffers[i], 12 * 3, 1, 0, 0);
+        }
+
+        res = vkEndCommandBuffer(engine->secondaryCommandBuffers[i]);
+        if (res != VK_SUCCESS) {
+            printf("vkBeginCommandBuffer returned error.\n");
+            return;
+        }
+    }
 }
 
 void updateUniforms(struct engine* engine)
@@ -1438,8 +1335,7 @@ void updateUniforms(struct engine* engine)
  */
 static void engine_draw_frame(struct engine* engine) {
 
-    if (!engine->vulkanSetupOK)
-    {
+    if (!engine->vulkanSetupOK) {
 //        LOGI("engine_draw_frame %d", engine->frame);
 //        LOGI("Vulkan not ready");
         return;
@@ -1466,67 +1362,14 @@ static void engine_draw_frame(struct engine* engine) {
     VkResult res;
 
     // Get next image in the swap chain (back/front buffer)
-    res = vkAcquireNextImageKHR(engine->vkDevice, engine->swapchain, UINT64_MAX, engine->presentCompleteSemaphore, NULL, &currentBuffer);
+    res = vkAcquireNextImageKHR(engine->vkDevice, engine->swapchain, UINT64_MAX,
+                                engine->presentCompleteSemaphore, NULL, &currentBuffer);
     if (res != VK_SUCCESS) {
         LOGE ("vkAcquireNextImageKHR returned error.\n");
         return;
     }
 
-    int i=0;
-
-    VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
-    commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-    commandBufferInheritanceInfo.pNext = 0;
-    commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
-    commandBufferInheritanceInfo.subpass = 0;
-    commandBufferInheritanceInfo.framebuffer = engine->framebuffers[currentBuffer];
-    commandBufferInheritanceInfo.occlusionQueryEnable = 0;
-    commandBufferInheritanceInfo.queryFlags = 0;
-    commandBufferInheritanceInfo.pipelineStatistics = 0;
-
-    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    commandBufferBeginInfo.pNext = NULL;
-    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-    commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
-    res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[0], &commandBufferBeginInfo);
-    if (res != VK_SUCCESS) {
-        printf("vkBeginCommandBuffer returned error.\n");
-        return;
-    }
-
-    VkClearAttachment clear;
-    clear.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    clear.clearValue.color.float32[0]=0;
-    clear.clearValue.color.float32[1]=0.5;
-    clear.clearValue.color.float32[2]=0;
-    clear.clearValue.color.float32[3]=0;
-    clear.colorAttachment=0;
-    VkClearRect clearRect;
-    clearRect.baseArrayLayer=0;
-    clearRect.layerCount=1;
-    clearRect.rect.extent.width=engine->width/4*2;
-    clearRect.rect.extent.height=engine->height/4*2;
-    clearRect.rect.offset.x=engine->width/4 - (i * 100);
-    clearRect.rect.offset.y=engine->height/4;
-//    vkCmdClearAttachments(engine->secondaryCommandBuffers[0], 1, &clear, 1, &clearRect);
-
-    vkCmdBindPipeline(engine->secondaryCommandBuffers[0], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                  engine->pipeline[i]);
-    vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[0], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        engine->pipelineLayout, 0, 1,
-                        engine->descriptorSets, 0, NULL);
-
-    VkDeviceSize offsets[1] = {0};
-    vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[0], 0, 1, &engine->vertexBuffer,
-                       offsets);
-    vkCmdDraw(engine->secondaryCommandBuffers[0], 12 * 3, 1, 0, 0);
-
-    res= vkEndCommandBuffer(engine->secondaryCommandBuffers[0]);
-    if (res != VK_SUCCESS) {
-        printf("vkBeginCommandBuffer returned error.\n");
-        return;
-    }
+    int i = 0;
 
     //Now record the primary command buffer:
     VkRenderPassBeginInfo renderPassBeginInfo;
@@ -1541,6 +1384,7 @@ static void engine_draw_frame(struct engine* engine) {
     renderPassBeginInfo.clearValueCount = 2;
     renderPassBeginInfo.pClearValues = clearValues;// + (i*2);
 
+    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = NULL;
     commandBufferBeginInfo.flags = (i == 0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
@@ -1576,7 +1420,10 @@ static void engine_draw_frame(struct engine* engine) {
     vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
                      VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1, engine->secondaryCommandBuffers);
+    VkCommandBuffer buffers[20];
+    for (int i = 0; i< 20; i++)
+        buffers[i] = engine->secondaryCommandBuffers[currentBuffer];
+    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 10, buffers);
 
     vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
 
@@ -1626,31 +1473,16 @@ static void engine_draw_frame(struct engine* engine) {
     submitInfo[1].signalSemaphoreCount = 0;
     submitInfo[1].pSignalSemaphores = NULL;
 
+
     res = vkQueueSubmit(engine->queue, 1, submitInfo, VK_NULL_HANDLE);
     if (res != VK_SUCCESS) {
         LOGE ("vkQueueSubmit returned error %d.\n", res);
         return;
     }
-//
-//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
-//    if (res != VK_SUCCESS) {
-//        LOGE ("vkQueueSubmit returned error %d.\n", res);
-//        return;
-//    }
-//
-//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
-//    if (res != VK_SUCCESS) {
-//        LOGE ("vkQueueSubmit returned error %d.\n", res);
-//        return;
-//    }
-//
-//    res = vkQueueSubmit(engine->queue, 1, &submitInfo[1], VK_NULL_HANDLE);
-//    if (res != VK_SUCCESS) {
-//        LOGE ("vkQueueSubmit returned error %d.\n", res);
-//        return;
-//    }
 
-    LOGI ("Waiting.\n");
+
+
+//    LOGI ("Waiting.\n");
 
     res = vkQueueWaitIdle(engine->queue);
     if (res != VK_SUCCESS) {
@@ -1658,7 +1490,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    LOGI ("Presentng.\n");
+//    LOGI ("Presentng.\n");
 
     VkPresentInfoKHR presentInfo;
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1675,7 +1507,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    LOGI ("Finished frame %d.\n", engine->frame);
+//    LOGI ("Finished frame %d.\n", engine->frame);
     engine->frame++;
 }
 
