@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2016 Matthew Wellings
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,21 +26,19 @@
 #include "matrix.h"
 #include "models.h"
 #include "stdredirect.h"
+#include "btQuickprof.h"
+#include "Simulation.h"
+#include "log.h"
 
 #include <android/sensor.h>
-#include <android/log.h>
 #include <android_native_app_glue.h>
 
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_platform.h>
 
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
-#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "native-activity", __VA_ARGS__))
-
-
 void createSecondaryBuffers(struct engine* engine);
+int setupUniforms(struct engine* engine);
 
 /**
  * Our saved state data.
@@ -65,6 +63,8 @@ struct engine {
     VkInstance vkInstance;
     VkDevice vkDevice;
     VkPhysicalDevice physicalDevice;
+    VkPhysicalDeviceProperties deviceProperties;
+    VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
     VkCommandBuffer setupCommandBuffer;
     VkCommandBuffer renderCommandBuffer[2];
     VkCommandBuffer secondaryCommandBuffers[4];
@@ -80,7 +80,10 @@ struct engine {
     VkSemaphore presentCompleteSemaphore;
     VkRenderPass renderPass[2];
     VkPipelineLayout pipelineLayout;
-    VkDescriptorSet *descriptorSets;
+    VkDescriptorSetLayout *descriptorSetLayouts;
+    VkDescriptorSet sceneDescriptorSet;
+    VkDescriptorSet *modelDescriptorSets;
+    uint modelBufferValsOffset;
     VkBuffer vertexBuffer;
     VkQueue queue;
     bool vulkanSetupOK;
@@ -89,6 +92,8 @@ struct engine {
     int32_t height;
     struct saved_state state;
     VkPipeline pipeline[2];
+    btClock *frameRateClock;
+    Simulation *simulation;
 
     const int NUM_SAMPLES = 1;
 };
@@ -229,9 +234,9 @@ static int engine_init_display(struct engine* engine) {
     }
     engine->physicalDevice=physicalDevices[0];
 
-    VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(engine->physicalDevice, &physicalDeviceMemoryProperties);
-    LOGI ("There are %d memory types.\n", physicalDeviceMemoryProperties.memoryTypeCount);
+
+    vkGetPhysicalDeviceMemoryProperties(engine->physicalDevice, &engine->physicalDeviceMemoryProperties);
+    LOGI ("There are %d memory types.\n", engine->physicalDeviceMemoryProperties.memoryTypeCount);
 
     VkDeviceQueueCreateInfo deviceQueueCreateInfo;
     deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -286,8 +291,6 @@ static int engine_init_display(struct engine* engine) {
     dci.pNext = NULL;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &deviceQueueCreateInfo;
-    dci.enabledLayerCount = 0;
-    dci.ppEnabledLayerNames = NULL;
     dci.enabledExtensionCount = 1;
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
@@ -757,28 +760,13 @@ static int engine_init_display(struct engine* engine) {
 
     LOGI("Renderpass created");
 
-
-    //Setup the pipeline
-    VkDescriptorSetLayoutBinding layout_bindings[1];
-    layout_bindings[0].binding = 0;
-    layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    layout_bindings[0].descriptorCount = 1;
-    layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    layout_bindings[0].pImmutableSamplers = NULL;
-
-    //Next take layout bindings and use them to create a descriptor set layout
-    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
-    descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptorSetLayoutCreateInfo.pNext = NULL;
-    descriptorSetLayoutCreateInfo.bindingCount = 1;
-    descriptorSetLayoutCreateInfo.pBindings = layout_bindings;
-
-    VkDescriptorSetLayout descriptorSetLayout;
-    res = vkCreateDescriptorSetLayout(engine->vkDevice, &descriptorSetLayoutCreateInfo, NULL, &descriptorSetLayout);
+    vkGetPhysicalDeviceProperties(engine->physicalDevice, &engine->deviceProperties);
     if (res != VK_SUCCESS) {
-        LOGE ("vkCreateDescriptorSetLayout returned error.\n");
+        printf ("vkGetPhysicalDeviceProperties returned error %d.\n", res);
         return -1;
     }
+
+    setupUniforms(engine);
 
     //Now use the descriptor layout to create a pipeline layout
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo;
@@ -786,14 +774,16 @@ static int engine_init_display(struct engine* engine) {
     pPipelineLayoutCreateInfo.pNext = NULL;
     pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
     pPipelineLayoutCreateInfo.pPushConstantRanges = NULL;
-    pPipelineLayoutCreateInfo.setLayoutCount = 1;
-    pPipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
+    pPipelineLayoutCreateInfo.setLayoutCount = 2;
+    pPipelineLayoutCreateInfo.pSetLayouts = engine->descriptorSetLayouts;
 
     res = vkCreatePipelineLayout(engine->vkDevice, &pPipelineLayoutCreateInfo, NULL, &engine->pipelineLayout);
     if (res != VK_SUCCESS) {
         LOGE ("vkCreatePipelineLayout returned error.\n");
         return -1;
     }
+
+    LOGI("Pipeline created");
 
     //load shaders
     size_t vertexShaderSize=0;
@@ -878,93 +868,6 @@ static int engine_init_display(struct engine* engine) {
 
     LOGI("%d framebuffers created", engine->swapchainImageCount);
 
-    VkBufferCreateInfo uniformBufferCreateInfo;
-    uniformBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    uniformBufferCreateInfo.pNext = NULL;
-    uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniformBufferCreateInfo.size = sizeof(float)*16; //Enough to store 1 matrix.
-    uniformBufferCreateInfo.queueFamilyIndexCount = 0;
-    uniformBufferCreateInfo.pQueueFamilyIndices = NULL;
-    uniformBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    uniformBufferCreateInfo.flags = 0;
-
-    VkBuffer uniformBuffer;
-    res = vkCreateBuffer(engine->vkDevice, &uniformBufferCreateInfo, NULL, &uniformBuffer);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkCreateBuffer returned error %d.\n", res);
-        return -1;
-    }
-
-    vkGetBufferMemoryRequirements(engine->vkDevice, uniformBuffer, &memoryRequirements);
-
-    typeBits = memoryRequirements.memoryTypeBits;
-    VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;// | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    for (typeIndex = 0; typeIndex < physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
-        if ((typeBits & 1) == 1)//Check last bit;
-        {
-            if ((physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
-            {
-                found=1;
-                break;
-            }
-            typeBits >>= 1;
-        }
-    }
-
-    if (!found)
-    {
-        LOGE ("Did not find a suitible memory type.\n");
-        return -1;
-    }else
-    LOGI ("Using memory type %d.\n", typeIndex);
-
-    memAllocInfo.pNext = NULL;
-    memAllocInfo.allocationSize = memoryRequirements.size;
-    memAllocInfo.memoryTypeIndex = typeIndex;
-    //
-    VkDeviceMemory uniformMemory;
-    res = vkAllocateMemory(engine->vkDevice, &memAllocInfo, NULL, &uniformMemory);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkCreateBuffer returned error %d.\n", res);
-        return -1;
-    }
-
-    res = vkMapMemory(engine->vkDevice, uniformMemory, 0, memoryRequirements.size, 0, (void **)&engine->uniformMappedMemory);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkMapMemory returned error %d.\n", res);
-        return -1;
-    }
-
-    res = vkBindBufferMemory(engine->vkDevice, uniformBuffer, uniformMemory, 0);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkBindBufferMemory returned error %d.\n", res);
-        return -1;
-    }
-
-    VkDescriptorBufferInfo uniformBufferInfo;
-    uniformBufferInfo.buffer = uniformBuffer;
-    uniformBufferInfo.offset = 0;
-    uniformBufferInfo.range = sizeof(float)*16;
-
-    //Create a descriptor pool
-    VkDescriptorPoolSize typeCounts[1];
-    typeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    typeCounts[0].descriptorCount = 1;
-
-    VkDescriptorPoolCreateInfo descriptorPoolInfo;
-    descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptorPoolInfo.pNext = NULL;
-    descriptorPoolInfo.maxSets = 1;
-    descriptorPoolInfo.poolSizeCount = 1;
-    descriptorPoolInfo.pPoolSizes = typeCounts;
-
-    VkDescriptorPool descriptorPool;
-    res = vkCreateDescriptorPool(engine->vkDevice, &descriptorPoolInfo, NULL, &descriptorPool);
-    if (res != VK_SUCCESS) {
-        printf ("vkCreateDescriptorPool returned error %d.\n", res);
-        return -1;
-    }
-
     //Create Vertex buffers:
     VkBufferCreateInfo vertexBufferCreateInfo;
     vertexBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -978,17 +881,17 @@ static int engine_init_display(struct engine* engine) {
 
     res = vkCreateBuffer(engine->vkDevice, &vertexBufferCreateInfo, NULL, &engine->vertexBuffer);
     if (res != VK_SUCCESS) {
-        LOGE ("vkCreateDescriptorPool returned error %d.\n", res);
+        LOGE ("vkCreateBuffer returned error %d.\n", res);
         return -1;
     }
 
     vkGetBufferMemoryRequirements(engine->vkDevice, engine->vertexBuffer, &memoryRequirements);
     typeBits = memoryRequirements.memoryTypeBits;
-    requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    for (typeIndex = 0; typeIndex < physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
+    VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
         if ((typeBits & 1) == 1)//Check last bit;
         {
-            if ((physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+            if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
             {
                 found=1;
                 break;
@@ -1045,34 +948,6 @@ static int engine_init_display(struct engine* engine) {
     vertexInputAttributeDescription[1].location = 1;
     vertexInputAttributeDescription[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     vertexInputAttributeDescription[1].offset = 16;
-
-    //Create a descriptor set
-    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
-    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    descriptorSetAllocateInfo.pNext = NULL;
-    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
-    descriptorSetAllocateInfo.descriptorSetCount = 1;
-    descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
-
-
-    engine->descriptorSets = new VkDescriptorSet[1];
-    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, engine->descriptorSets);
-    if (res != VK_SUCCESS) {
-        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
-        return -1;
-    }
-
-    VkWriteDescriptorSet writes[1];
-    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].pNext = NULL;
-    writes[0].dstSet = engine->descriptorSets[0];
-    writes[0].descriptorCount = 1;
-    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[0].pBufferInfo = &uniformBufferInfo;
-    writes[0].dstArrayElement = 0;
-    writes[0].dstBinding = 0;
-
-    vkUpdateDescriptorSets(engine->vkDevice, 1, writes, 0, NULL);
 
 
     VkViewport viewport;
@@ -1136,7 +1011,7 @@ static int engine_init_display(struct engine* engine) {
     cb.pNext = NULL;
     VkPipelineColorBlendAttachmentState att_state[1];
     att_state[0].colorWriteMask = 0xf;
-    att_state[0].blendEnable = VK_FALSE;
+    att_state[0].blendEnable = VK_TRUE;
     att_state[0].alphaBlendOp = VK_BLEND_OP_ADD;
     att_state[0].colorBlendOp = VK_BLEND_OP_ADD;
     att_state[0].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -1167,7 +1042,7 @@ static int engine_init_display(struct engine* engine) {
     ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     ds.pNext = NULL;
     ds.flags = 0;
-    ds.depthTestEnable = VK_TRUE;
+    ds.depthTestEnable = VK_FALSE;
     ds.depthWriteEnable = VK_TRUE;
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
@@ -1247,6 +1122,195 @@ static int engine_init_display(struct engine* engine) {
     return 0;
 }
 
+int setupUniforms(struct engine* engine)
+{
+    VkResult res;
+
+    //Create a descriptor pool
+    VkDescriptorPoolSize typeCounts[1];
+    typeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    typeCounts[0].descriptorCount = 101;
+
+    VkDescriptorPoolCreateInfo descriptorPoolInfo;
+    descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptorPoolInfo.pNext = NULL;
+    descriptorPoolInfo.maxSets = 101;
+    descriptorPoolInfo.poolSizeCount = 1;
+    descriptorPoolInfo.pPoolSizes = typeCounts;
+
+    VkDescriptorPool descriptorPool;
+    res = vkCreateDescriptorPool(engine->vkDevice, &descriptorPoolInfo, NULL, &descriptorPool);
+    if (res != VK_SUCCESS) {
+        printf ("vkCreateDescriptorPool returned error %d.\n", res);
+        return -1;
+    }
+
+    printf ("minUniformBufferOffsetAlignment %d.\n", engine->deviceProperties.limits.minUniformBufferOffsetAlignment);
+    engine->modelBufferValsOffset = sizeof(float)*16;
+    if (engine->modelBufferValsOffset < engine->deviceProperties.limits.minUniformBufferOffsetAlignment)
+        engine->modelBufferValsOffset = engine->deviceProperties.limits.minUniformBufferOffsetAlignment;
+    printf ("modelBufferValsOffset %d.\n", engine->modelBufferValsOffset);
+
+    VkBufferCreateInfo uniformBufferCreateInfo;
+    uniformBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    uniformBufferCreateInfo.pNext = NULL;
+    uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    uniformBufferCreateInfo.size = engine->modelBufferValsOffset*101; //Enough to store 101 matricies.
+    uniformBufferCreateInfo.queueFamilyIndexCount = 0;
+    uniformBufferCreateInfo.pQueueFamilyIndices = NULL;
+    uniformBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    uniformBufferCreateInfo.flags = 0;
+
+    VkBuffer uniformBuffer;
+    res = vkCreateBuffer(engine->vkDevice, &uniformBufferCreateInfo, NULL, &uniformBuffer);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkCreateBuffer returned error %d.\n", res);
+        return -1;
+    }
+
+    VkMemoryRequirements memoryRequirements;
+    vkGetBufferMemoryRequirements(engine->vkDevice, uniformBuffer, &memoryRequirements);
+    uint found;
+    uint32_t typeBits = memoryRequirements.memoryTypeBits;
+    VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    uint32_t typeIndex;
+    for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
+        if ((typeBits & 1) == 1)//Check last bit;
+        {
+            if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+            {
+                found=1;
+                break;
+            }
+            typeBits >>= 1;
+        }
+    }
+
+    if (!found)
+    {
+        LOGE ("Did not find a suitable memory type.\n");
+        return -1;
+    }else
+        LOGI ("Using memory type %d.\n", typeIndex);
+
+    VkMemoryAllocateInfo memAllocInfo;
+    memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memAllocInfo.pNext = NULL;
+    memAllocInfo.allocationSize = memoryRequirements.size;
+    memAllocInfo.memoryTypeIndex = typeIndex;
+    //
+    VkDeviceMemory uniformMemory;
+    res = vkAllocateMemory(engine->vkDevice, &memAllocInfo, NULL, &uniformMemory);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkCreateBuffer returned error %d.\n", res);
+        return -1;
+    }
+
+    res = vkMapMemory(engine->vkDevice, uniformMemory, 0, memoryRequirements.size, 0, (void **)&engine->uniformMappedMemory);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkMapMemory returned error %d.\n", res);
+        return -1;
+    }
+
+    res = vkBindBufferMemory(engine->vkDevice, uniformBuffer, uniformMemory, 0);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkBindBufferMemory returned error %d.\n", res);
+        return -1;
+    }
+
+    engine->descriptorSetLayouts = new VkDescriptorSetLayout[2];
+
+    for (int i = 0; i <2; i++) {
+        VkDescriptorSetLayoutBinding layout_bindings[1];
+        layout_bindings[0].binding = 0;
+        layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        layout_bindings[0].descriptorCount = 1;
+        layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        layout_bindings[0].pImmutableSamplers = NULL;
+
+        //Next take layout bindings and use them to create a descriptor set layout
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
+        descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCreateInfo.pNext = NULL;
+        descriptorSetLayoutCreateInfo.bindingCount = 1;
+        descriptorSetLayoutCreateInfo.pBindings = layout_bindings;
+
+        res = vkCreateDescriptorSetLayout(engine->vkDevice, &descriptorSetLayoutCreateInfo, NULL,
+                                          &engine->descriptorSetLayouts[i]);
+        if (res != VK_SUCCESS) {
+            LOGE ("vkCreateDescriptorSetLayout returned error.\n");
+            return -1;
+        }
+    }
+
+    //Create the descriptor sets
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
+    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocateInfo.pNext = NULL;
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts = &engine->descriptorSetLayouts[0];
+
+    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, &engine->sceneDescriptorSet);
+    if (res != VK_SUCCESS) {
+        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
+        return -1;
+    }
+
+    engine->modelDescriptorSets = new VkDescriptorSet[100];
+    VkDescriptorSetLayout sceneLayouts[100];
+    for (int i=0; i<100; i++)
+        sceneLayouts[i]=engine->descriptorSetLayouts[1];
+
+    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocateInfo.pNext = NULL;
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocateInfo.descriptorSetCount = 100;
+    descriptorSetAllocateInfo.pSetLayouts = sceneLayouts;
+
+    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, engine->modelDescriptorSets);
+    if (res != VK_SUCCESS) {
+        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
+        return -1;
+    }
+
+    VkDescriptorBufferInfo uniformBufferInfo[101];
+    VkWriteDescriptorSet writes[101];
+    for (int i = 0; i<100; i++) {
+        uniformBufferInfo[i].buffer = uniformBuffer;
+        uniformBufferInfo[i].offset = engine->modelBufferValsOffset*i;
+        uniformBufferInfo[i].range = sizeof(float) * 16;
+
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].pNext = NULL;
+        writes[i].dstSet = engine->modelDescriptorSets[i];
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writes[i].pBufferInfo = &uniformBufferInfo[i];
+        writes[i].dstArrayElement = 0;
+        writes[i].dstBinding = 0;
+    }
+
+    uniformBufferInfo[100].buffer = uniformBuffer;
+    uniformBufferInfo[100].offset = engine->modelBufferValsOffset*100;
+    uniformBufferInfo[100].range = sizeof(float)*16;
+
+    writes[100].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[100].pNext = NULL;
+    writes[100].dstSet = engine->sceneDescriptorSet;
+    writes[100].descriptorCount = 1;
+    writes[100].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[100].pBufferInfo = &uniformBufferInfo[100];
+    writes[100].dstArrayElement = 0;
+    writes[100].dstBinding = 0;
+
+    vkUpdateDescriptorSets(engine->vkDevice, 101, writes, 0, NULL);
+
+    LOGI ("Descriptor sets updated %d.\n", res);
+    return 0;
+}
+
 void createSecondaryBuffers(struct engine* engine)
 {
     LOGI("Creating Secondary Buffers");
@@ -1280,7 +1344,7 @@ void createSecondaryBuffers(struct engine* engine)
 //        clear.clearValue.color.float32[1] = 0.5;
 //        clear.clearValue.color.float32[2] = 0;
 //        clear.clearValue.color.float32[3] = 0;
-//        clear.colorAttachment = 0;
+//       clear.colorAttachment = 0;
 //        VkClearRect clearRect;
 //        clearRect.baseArrayLayer = 0;
 //        clearRect.layerCount = 1;
@@ -1291,17 +1355,21 @@ void createSecondaryBuffers(struct engine* engine)
 //    vkCmdClearAttachments(engine->secondaryCommandBuffers[0], 1, &clear, 1, &clearRect);
 
 
+        vkCmdBindPipeline(engine->secondaryCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          engine->pipeline[0]);
+        vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                engine->pipelineLayout, 1, 1,
+                                &engine->sceneDescriptorSet, 0, NULL);
+        VkDeviceSize offsets[1] = {0};
+        vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[i], 0, 1, &engine->vertexBuffer,
+                               offsets);
         for (int object = 0; object < 100; object++) {
-            vkCmdBindPipeline(engine->secondaryCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              engine->pipeline[0]);
             vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     engine->pipelineLayout, 0, 1,
-                                    engine->descriptorSets, 0, NULL);
+                                    &engine->modelDescriptorSets[object], 0, NULL);
 
-            VkDeviceSize offsets[1] = {0};
-            vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[i], 0, 1, &engine->vertexBuffer,
-                                   offsets);
             vkCmdDraw(engine->secondaryCommandBuffers[i], 12 * 3, 1, 0, 0);
         }
 
@@ -1323,11 +1391,15 @@ void updateUniforms(struct engine* engine)
     float MVPMatrix[16];
 
     perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 100.0f, projectionMatrix);
-    translate_matrix(0,0,-5, viewMatrix);
+    translate_matrix(0,0,-50, viewMatrix);
     rotate_matrix(45+engine->frame, 0,1,0, modelMatrix);
     multiply_matrix(viewMatrix, modelMatrix, MVMatrix);
     //As the memory is still mapped we can write the result stright into uniformMappedMemory:
-    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
+//    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
+    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 100.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*100));
+//    for (int i=0; i<100; i++)
+//        memcpy((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*i), MVMatrix, sizeof(float)*16);
+    engine->simulation->write(engine->uniformMappedMemory, engine->modelBufferValsOffset);
 }
 
 /**
@@ -1420,10 +1492,10 @@ static void engine_draw_frame(struct engine* engine) {
     vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
                      VK_SUBPASS_CONTENTS_INLINE);
 
-    VkCommandBuffer buffers[20];
-    for (int i = 0; i< 20; i++)
+    VkCommandBuffer buffers[40];
+    for (int i = 0; i< 1; i++)
         buffers[i] = engine->secondaryCommandBuffers[currentBuffer];
-    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 10, buffers);
+    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1, buffers);
 
     vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
 
@@ -1480,8 +1552,6 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-
-
 //    LOGI ("Waiting.\n");
 
     res = vkQueueWaitIdle(engine->queue);
@@ -1509,6 +1579,11 @@ static void engine_draw_frame(struct engine* engine) {
 
 //    LOGI ("Finished frame %d.\n", engine->frame);
     engine->frame++;
+    if (engine->frame % 120 == 0) {
+        float frameRate = (120.0f/((float)(engine->frameRateClock->getTimeMilliseconds())/1000.0f));
+        LOGI("Framerate: %f", frameRate);
+        engine->frameRateClock->reset();
+    }
 }
 
 /**
@@ -1617,6 +1692,11 @@ void android_main(struct android_app* state) {
     engine.app = state;
     engine.animating=1;
     engine.vulkanSetupOK=false;
+    engine.frameRateClock=new btClock;
+    engine.frameRateClock->reset();
+    engine.simulation = new Simulation;
+    engine.simulation->step();
+
 
     // Prepare to monitor accelerometer
     engine.sensorManager = ASensorManager_getInstance();
@@ -1685,6 +1765,7 @@ void android_main(struct android_app* state) {
             // Drawing is throttled to the screen update rate, so there
             // is no need to do timing here.
             engine_draw_frame(&engine);
+            engine.simulation->step();
         }
     }
 }

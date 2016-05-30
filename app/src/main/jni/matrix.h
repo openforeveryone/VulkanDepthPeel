@@ -1,4 +1,5 @@
 #include <math.h>
+#include <string.h>
 
 /*
  * Simulates desktop's glRotatef. The matrix is returned in column-major

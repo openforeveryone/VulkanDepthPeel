@@ -14,7 +14,7 @@ static void *stdout_log_thread_main(void*)
     char buf[128];
     while((bytesRead = read(stdoutpfd[0], buf, sizeof buf - 1)) > 0)
     {
-        buf[bytesRead] = '\n';
+        buf[bytesRead] = '\0';
         __android_log_write(ANDROID_LOG_DEBUG, "native-activity-stdout", buf);
     }
     return 0;
@@ -26,7 +26,7 @@ static void *stderr_log_thread_main(void*)
     char buf[128];
     while((bytesRead = read(stderrpfd[0], buf, sizeof buf - 1)) > 0)
     {
-        buf[bytesRead] = '\n';
+        buf[bytesRead] = '\0';
         __android_log_write(ANDROID_LOG_ERROR, "native-activity-stderr", buf);
     }
     return 0;
@@ -34,13 +34,14 @@ static void *stderr_log_thread_main(void*)
 
 void redirectStdIO()
 {
-    setvbuf(stdout, 0, _IOLBF, 0);
-    setvbuf(stderr, 0, _IONBF, 0);
 
     pipe(stdoutpfd);
     pipe(stderrpfd);
     dup2(stdoutpfd[1], STDOUT_FILENO);
     dup2(stderrpfd[1], STDERR_FILENO);
+
+    setvbuf(stdout, 0, _IONBF, 0);
+    setvbuf(stderr, 0, _IONBF, 0);
 
     if(pthread_create(&stdoutthr, 0, stdout_log_thread_main, 0) == -1)
         return;
