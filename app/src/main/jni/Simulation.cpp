@@ -29,7 +29,7 @@ void Simulation::step() {
             transforms[i*16+13]=(float)rand()/(float)(RAND_MAX) * 30.0f - 15.0f;
             velocities[i*2]=(float)rand()/(float)(RAND_MAX) / 8.0f -(1.0/16.0f);
             velocities[i*2+1]=(float)rand()/(float)(RAND_MAX) / 8.0f -(1.0f/16.0f);
-            LOGI("Reset cube %d (%f, %f, %f)", i, transforms[i*16+12], transforms[i*16+13], transforms[i*16+14]);
+//            LOGI("Reset cube %d (%f, %f, %f)", i, transforms[i*16+12], transforms[i*16+13], transforms[i*16+14]);
         }
         transforms[i*16+12]+=velocities[i*2];
         transforms[i*16+13]+=velocities[i*2+1];

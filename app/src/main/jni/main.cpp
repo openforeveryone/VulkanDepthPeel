@@ -94,6 +94,8 @@ struct engine {
     VkPipeline pipeline[2];
     btClock *frameRateClock;
     Simulation *simulation;
+    bool splitscreen;
+    bool rebuildCommadBuffersRequired;
 
     const int NUM_SAMPLES = 1;
 };
@@ -958,12 +960,6 @@ static int engine_init_display(struct engine* engine) {
     viewport.x = 0;
     viewport.y = 0;
 
-    VkRect2D scissor;
-    scissor.extent.width = swapChainExtent.width;
-    scissor.extent.height = swapChainExtent.height;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-
     //Create a pipeline object
     VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE];
     VkPipelineDynamicStateCreateInfo dynamicState;
@@ -1033,10 +1029,9 @@ static int engine_init_display(struct engine* engine) {
     vp.flags = 0;
     vp.viewportCount = 1;
 //    dynamicStateEnables[dynamicState.dynamicStateCount++] = VK_DYNAMIC_STATE_VIEWPORT;
-    vp.scissorCount = 1;
-//    dynamicStateEnables[dynamicState.dynamicStateCount++] = VK_DYNAMIC_STATE_SCISSOR;
-    vp.pScissors = &scissor;
     vp.pViewports = &viewport;
+    vp.scissorCount = 1;
+    dynamicStateEnables[dynamicState.dynamicStateCount++] = VK_DYNAMIC_STATE_SCISSOR;
 
     VkPipelineDepthStencilStateCreateInfo ds;
     ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -1314,6 +1309,7 @@ int setupUniforms(struct engine* engine)
 void createSecondaryBuffers(struct engine* engine)
 {
     LOGI("Creating Secondary Buffers");
+    engine->rebuildCommadBuffersRequired=false;
     for (int i = 0; i< engine->swapchainImageCount; i++) {
         VkResult res;
         VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
@@ -1357,6 +1353,17 @@ void createSecondaryBuffers(struct engine* engine)
 
         vkCmdBindPipeline(engine->secondaryCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
                           engine->pipeline[0]);
+
+        VkRect2D scissor;
+        scissor.extent.width = engine->width;
+        if (engine->splitscreen)
+            scissor.extent.width=scissor.extent.width/2;
+        scissor.extent.height = engine->height;
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+
+        vkCmdSetScissor(engine->secondaryCommandBuffers[i], 0, 1, &scissor);
+
         vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 engine->pipelineLayout, 1, 1,
@@ -1430,6 +1437,9 @@ static void engine_draw_frame(struct engine* engine) {
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
 
+    if (engine->rebuildCommadBuffersRequired)
+        createSecondaryBuffers(engine);
+
     uint32_t currentBuffer;
     VkResult res;
 
@@ -1491,6 +1501,7 @@ static void engine_draw_frame(struct engine* engine) {
 
     vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
                      VK_SUBPASS_CONTENTS_INLINE);
+
 
     VkCommandBuffer buffers[40];
     for (int i = 0; i< 1; i++)
@@ -1615,14 +1626,30 @@ static void engine_term_display(struct engine* engine) {
  */
 static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) {
     struct engine* engine = (struct engine*)app->userData;
-//    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
     LOGI("engine_handle_input");
         engine->animating = 1;
         engine->state.x = AMotionEvent_getX(event, 0);
         engine->state.y = AMotionEvent_getY(event, 0);
         return 1;
-//    }
-//    return 0;
+    }
+    else if( AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY ) {
+        int32_t keycode = AKeyEvent_getKeyCode(event);
+        int32_t repeatCount = AKeyEvent_getRepeatCount(event);
+        int32_t action = AKeyEvent_getAction(event);
+        int32_t metaState = AKeyEvent_getMetaState(event);
+        int32_t devId = AInputEvent_getDeviceId(event);
+//        LOGI("Key pressed %d, %s", keycode, (action == AKEY_EVENT_ACTION_DOWN) ? "Down" : "Up");
+        if (keycode==AKEYCODE_DPAD_CENTER && action == AKEY_EVENT_ACTION_DOWN) {
+            engine->splitscreen = !engine->splitscreen;
+            engine->rebuildCommadBuffersRequired=true;
+        }
+        if (keycode==AKEYCODE_BACK && action == AKEY_EVENT_ACTION_UP) {
+            ANativeActivity_finish(engine->app->activity);
+        }
+        return 1;
+    }
+    return 0;
 }
 
 /**
@@ -1696,6 +1723,8 @@ void android_main(struct android_app* state) {
     engine.frameRateClock->reset();
     engine.simulation = new Simulation;
     engine.simulation->step();
+    engine.splitscreen = true;
+    engine.rebuildCommadBuffersRequired = false;
 
 
     // Prepare to monitor accelerometer
