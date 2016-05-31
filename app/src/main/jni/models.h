@@ -5,7 +5,7 @@ struct Vertex{
 };
 
 #define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
-#define XYZp5(_x_, _y_, _z_) (_x_), (_y_), (_z_), 0.5
+#define XYZp5(_x_, _y_, _z_) (_x_), (_y_), (_z_), 0.85
 
 static const struct Vertex vertexData[] = {
         {XYZ1(-1, -1, -1), XYZp5(0.f, 0.f, 0.f)},
