@@ -21,21 +21,30 @@
 //#include <errno.h>
 #include <cassert>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include <stdio.h>
 #include "matrix.h"
 #include "models.h"
-#include "stdredirect.h"
 #include "btQuickprof.h"
 #include "Simulation.h"
 #include "log.h"
 
+#ifdef ANDROID
 #include <android/sensor.h>
 #include <android_native_app_glue.h>
-
+#include "stdredirect.h"
 #define VK_USE_PLATFORM_ANDROID_KHR
+#else
+#include <xcb/xcb.h>
+#include <xcb/xcb_icccm.h>
+#define VK_USE_PLATFORM_XCB_KHR
+#endif
+
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_platform.h>
+
+//#define dontUseSubpasses 1
 
 void createSecondaryBuffers(struct engine* engine);
 int setupUniforms(struct engine* engine);
@@ -58,10 +67,14 @@ struct saved_state {
 struct engine {
     struct android_app* app;
 
+#ifdef ANDROID
     ASensorManager* sensorManager;
     const ASensor* accelerometerSensor;
     ASensorEventQueue* sensorEventQueue;
-
+#else
+    xcb_connection_t *xcbConnection;
+    uint32_t window;
+#endif
     int animating = 1;
     VkInstance vkInstance;
     VkDevice vkDevice;
@@ -84,12 +97,13 @@ struct engine {
     VkFramebuffer *framebuffers;
     uint8_t *uniformMappedMemory;
     VkSemaphore presentCompleteSemaphore;
-    VkRenderPass renderPass[2];
+    VkRenderPass renderPass[9];
     VkPipelineLayout pipelineLayout;
+    VkPipelineLayout blendPipelineLayout;
     VkDescriptorSetLayout *descriptorSetLayouts;
     VkDescriptorSet sceneDescriptorSet;
     VkDescriptorSet *modelDescriptorSets;
-    uint modelBufferValsOffset;
+    uint32_t modelBufferValsOffset;
     VkBuffer vertexBuffer;
     VkQueue queue;
     bool vulkanSetupOK;
@@ -112,8 +126,9 @@ struct engine {
 };
 
 char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &size)
-{
+{    
     ok=false;
+#ifdef ANDROID
     char *buffer = NULL;
     AAsset* asset = AAssetManager_open(pEngine->app->activity->assetManager, filename, AASSET_MODE_STREAMING);
     if (!asset) {
@@ -136,6 +151,28 @@ char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &
     ok=true;
     LOGI("File %s read %d bytes.", filename, bytesRead);
     return buffer;
+#else
+    char path[100];
+    strcpy(path, "../assets/");
+    strcat(path, filename);
+    size_t retval;
+    void *fileContents;
+
+    FILE *fileHandle = fopen(path, "rb");
+    if (!fileHandle) return NULL;
+
+    fseek(fileHandle, 0L, SEEK_END);
+    size = ftell(fileHandle);
+
+    fseek(fileHandle, 0L, SEEK_SET);
+
+    fileContents = malloc(size);
+    retval = fread(fileContents, size, 1, fileHandle);
+    assert(retval == 1);
+
+    ok=true;
+    return (char*)fileContents;
+#endif
 }
 
 
@@ -147,6 +184,7 @@ static int engine_init_display(struct engine* engine) {
 
     LOGI ("Initializing Vulkan\n");
 
+#ifdef ANDROID
     //Redirect stdio to android log so vulkan validation layer output is not lost.
     //Redirect code from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
     /* make stdout line-buffered and stderr unbuffered */
@@ -167,6 +205,7 @@ static int engine_init_display(struct engine* engine) {
         LOGI("Current working dir: %s\n", cwd);
 
     //We will put the working directory back to oldcwd later.
+#endif
 
     VkResult res;
 
@@ -187,7 +226,11 @@ static int engine_init_display(struct engine* engine) {
 
     const char *enabledInstanceExtensionNames[] = {
             VK_KHR_SURFACE_EXTENSION_NAME,
+    #ifdef ANDROID
             VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
+    #else
+            VK_KHR_XCB_SURFACE_EXTENSION_NAME
+    #endif
     };
 
     VkApplicationInfo app_info;
@@ -207,7 +250,7 @@ static int engine_init_display(struct engine* engine) {
     inst_info.pApplicationInfo = &app_info;
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
-    inst_info.enabledLayerCount = 1;
+    inst_info.enabledLayerCount = 0;
     inst_info.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateInstance(&inst_info, NULL, &engine->vkInstance);
@@ -225,8 +268,10 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("GPU Count: %i\n", deviceBufferSize);
     if (deviceBufferSize==0)
     {
-        LOGE("No Vulkan device");
+        LOGE("No Vulkan device");        
+#ifdef ANDROID
         ANativeActivity_finish(engine->app->activity);
+#endif
         return -1;
     }
     VkPhysicalDevice physicalDevices[deviceBufferSize];
@@ -240,17 +285,32 @@ static int engine_init_display(struct engine* engine) {
     }
     engine->physicalDevice=physicalDevices[0];
 
+    VkSurfaceKHR surface;
+#ifdef ANDROID
     VkAndroidSurfaceCreateInfoKHR instInfo;
     instInfo.sType=VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
     instInfo.pNext=NULL;
     instInfo.window=engine->app->window;
 
-    VkSurfaceKHR surface;
     res =  vkCreateAndroidSurfaceKHR(engine->vkInstance, &instInfo, NULL, &surface);
     if (res != VK_SUCCESS) {
         LOGE ("vkCreateAndroidSurfaceKHR returned error.\n");
         return -1;
     }
+#else
+    VkXcbSurfaceCreateInfoKHR createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+    createInfo.pNext = NULL;
+    createInfo.connection = engine->xcbConnection;
+    createInfo.window = engine->window;
+    res = vkCreateXcbSurfaceKHR(engine->vkInstance, &createInfo, NULL, &surface);
+    if (res != VK_SUCCESS) {
+      printf ("vkCreateXcbSurfaceKHR returned error.\n");
+      return -1;
+    }
+#endif
+
+
     LOGI ("Vulkan surface created\n");
 
     vkGetPhysicalDeviceMemoryProperties(engine->physicalDevice, &engine->physicalDeviceMemoryProperties);
@@ -312,7 +372,7 @@ static int engine_init_display(struct engine* engine) {
     dci.enabledExtensionCount = 1;
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
-    dci.enabledLayerCount = 1;
+    dci.enabledLayerCount = 0;
     dci.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateDevice(engine->physicalDevice, &dci, NULL, &engine->vkDevice);
@@ -706,7 +766,7 @@ static int engine_init_display(struct engine* engine) {
         VkImageMemoryBarrier imageMemoryBarrier;
         imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         imageMemoryBarrier.pNext = NULL;
         imageMemoryBarrier.image = engine->peelImage;
         imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -782,9 +842,9 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
-    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*2];
+    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*(4+2)];
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*2;
+    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(4+2);
 
     res = vkAllocateCommandBuffers(engine->vkDevice, &commandBufferAllocateInfo, engine->secondaryCommandBuffers);
     if (res != VK_SUCCESS) {
@@ -818,8 +878,8 @@ static int engine_init_display(struct engine* engine) {
     attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachments[2].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[2].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
+    attachments[2].finalLayout = VK_IMAGE_LAYOUT_GENERAL;
     attachments[2].flags = 0;
 
     VkAttachmentReference color_reference;
@@ -832,7 +892,7 @@ static int engine_init_display(struct engine* engine) {
 
     VkAttachmentReference peelcolor_reference;
     peelcolor_reference.attachment = 2;
-    peelcolor_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    peelcolor_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
 
     VkSubpassDependency subpassDependencies[9];
     VkSubpassDescription subpasses[9];
@@ -846,6 +906,8 @@ static int engine_init_display(struct engine* engine) {
     subpasses[0].pDepthStencilAttachment = &depth_reference;
     subpasses[0].preserveAttachmentCount = 0;
     subpasses[0].pPreserveAttachments = NULL;
+
+    uint32_t colour_attachment = 0;
     for (int i =0; i<4; i++)
     {
         subpassDependencies[i*2].srcSubpass = i*2;
@@ -858,14 +920,14 @@ static int engine_init_display(struct engine* engine) {
 
         subpasses[i * 2 + 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 1].flags = 0;
-        subpasses[i * 2 + 1].inputAttachmentCount = 1;
-        subpasses[i * 2 + 1].pInputAttachments = &color_reference;
+        subpasses[i * 2 + 1].inputAttachmentCount = 0;
+        subpasses[i * 2 + 1].pInputAttachments = NULL;
         subpasses[i * 2 + 1].colorAttachmentCount = 1;
         subpasses[i * 2 + 1].pColorAttachments = &peelcolor_reference;
         subpasses[i * 2 + 1].pResolveAttachments = NULL;
         subpasses[i * 2 + 1].pDepthStencilAttachment = &depth_reference;
-        subpasses[i * 2 + 1].preserveAttachmentCount = 0;
-        subpasses[i * 2 + 1].pPreserveAttachments = NULL;
+        subpasses[i * 2 + 1].preserveAttachmentCount = 1;
+        subpasses[i * 2 + 1].pPreserveAttachments = &colour_attachment;
 
         subpassDependencies[i*2+1].srcSubpass = i*2+1;
         subpassDependencies[i*2+1].dstSubpass = i*2+2;
@@ -889,15 +951,42 @@ static int engine_init_display(struct engine* engine) {
 
     }
 
-    VkRenderPassCreateInfo rp_info[2];
+    VkRenderPassCreateInfo rp_info[9];
+#ifndef dontUseSubpasses
     rp_info[0].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     rp_info[0].pNext = NULL;
+    rp_info[0].flags=0;
     rp_info[0].attachmentCount = 3;
     rp_info[0].pAttachments = attachments;
     rp_info[0].subpassCount = 9;
     rp_info[0].pSubpasses = subpasses;
     rp_info[0].dependencyCount = 8;
     rp_info[0].pDependencies = subpassDependencies;
+    res = vkCreateRenderPass(engine->vkDevice, &rp_info[0], NULL, &engine->renderPass[0]);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkCreateRenderPass returned error. %d\n", res);
+        return -1;
+    }
+#else
+    for (int i = 0; i<9; i++)
+    {
+        rp_info[i].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rp_info[i].pNext = NULL;
+        rp_info[i].attachmentCount = 3;
+        rp_info[i].pAttachments = attachments;
+        rp_info[i].subpassCount = 1;
+        rp_info[i].pSubpasses = &subpasses[i];
+        rp_info[i].dependencyCount = 0;
+        rp_info[i].pDependencies = NULL;
+        LOGI("Creating renderpass %d", i);
+        res = vkCreateRenderPass(engine->vkDevice, &rp_info[i], NULL, &engine->renderPass[i]);
+        if (res != VK_SUCCESS) {
+            LOGE ("vkCreateRenderPass returned error. %d\n", res);
+            return -1;
+        }
+    }
+#endif
+
 
 //    rp_info[1].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 //    rp_info[1].pNext = NULL;
@@ -908,11 +997,7 @@ static int engine_init_display(struct engine* engine) {
 //    rp_info[1].dependencyCount = 0;
 //    rp_info[1].pDependencies = NULL;
 
-    res = vkCreateRenderPass(engine->vkDevice, &rp_info[0], NULL, &engine->renderPass[0]);
-    if (res != VK_SUCCESS) {
-        LOGE ("vkCreateRenderPass returned error. %d\n", res);
-        return -1;
-    }
+
 
 //    res = vkCreateRenderPass(engine->vkDevice, &rp_info[1], NULL, &engine->renderPass[1]);
 //    if (res != VK_SUCCESS) {
@@ -945,7 +1030,20 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
-    LOGI("Pipeline created");
+    pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pPipelineLayoutCreateInfo.pNext = NULL;
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+    pPipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+    pPipelineLayoutCreateInfo.setLayoutCount = 3;
+    pPipelineLayoutCreateInfo.pSetLayouts = engine->descriptorSetLayouts;
+
+    res = vkCreatePipelineLayout(engine->vkDevice, &pPipelineLayoutCreateInfo, NULL, &engine->blendPipelineLayout);
+    if (res != VK_SUCCESS) {
+        LOGE ("vkCreatePipelineLayout returned error.\n");
+        return -1;
+    }
+
+    LOGI("Pipeline layout created");
 
     //load shaders
 
@@ -1137,11 +1235,13 @@ static int engine_init_display(struct engine* engine) {
 
     createSecondaryBuffers(engine);
 
+#ifdef ANDROID
     LOGI("Restoring working directory");
     chdir(oldcwd);
 
     if (getcwd(cwd, sizeof(cwd)) != NULL)
         LOGI("Current working dir: %s\n", cwd);
+#endif
 
     engine->vulkanSetupOK=true;
     LOGI ("Vulkan setup complete");
@@ -1151,6 +1251,9 @@ static int engine_init_display(struct engine* engine) {
 
 int setupTraditionalBlendPipeline(struct engine* engine)
 {
+
+    LOGI("Setting up trad blend pipeline");
+
     VkRect2D scissor;
     scissor.extent.width = engine->width / 2;
     scissor.extent.height = engine->height;
@@ -1248,6 +1351,13 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
+    ds.back.failOp = VK_STENCIL_OP_KEEP;
+    ds.back.passOp = VK_STENCIL_OP_KEEP;
+    ds.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    ds.back.compareMask = 0;
+    ds.back.reference = 0;
+    ds.back.depthFailOp = VK_STENCIL_OP_KEEP;
+    ds.back.writeMask = 0;
     ds.minDepthBounds = 0;
     ds.maxDepthBounds = 0;
     ds.stencilTestEnable = VK_FALSE;
@@ -1294,6 +1404,8 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     pipelineInfo.pTessellationState = NULL;
     pipelineInfo.pMultisampleState = &ms;
     pipelineInfo.pDynamicState = &dynamicState;
+    if (dynamicState.dynamicStateCount==0)
+        pipelineInfo.pDynamicState=NULL;
     pipelineInfo.pViewportState = &vp;
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
@@ -1312,6 +1424,8 @@ int setupTraditionalBlendPipeline(struct engine* engine)
 
 
 int setupPeelPipeline(struct engine* engine) {
+
+    LOGI("Setting up peel pipeline");
 
     VkViewport viewport;
     viewport.height = (float) engine->height;
@@ -1398,6 +1512,13 @@ int setupPeelPipeline(struct engine* engine) {
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
+    ds.back.failOp = VK_STENCIL_OP_KEEP;
+    ds.back.passOp = VK_STENCIL_OP_KEEP;
+    ds.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    ds.back.compareMask = 0;
+    ds.back.reference = 0;
+    ds.back.depthFailOp = VK_STENCIL_OP_KEEP;
+    ds.back.writeMask = 0;
     ds.minDepthBounds = 0;
     ds.maxDepthBounds = 0;
     ds.stencilTestEnable = VK_FALSE;
@@ -1444,6 +1565,8 @@ int setupPeelPipeline(struct engine* engine) {
     pipelineInfo.pTessellationState = NULL;
     pipelineInfo.pMultisampleState = &ms;
     pipelineInfo.pDynamicState = &dynamicState;
+    if (dynamicState.dynamicStateCount==0)
+        pipelineInfo.pDynamicState=NULL;
     pipelineInfo.pViewportState = &vp;
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
@@ -1463,6 +1586,7 @@ int setupPeelPipeline(struct engine* engine) {
 
 int setupBlendPipeline(struct engine* engine) {
 
+    LOGI("Setting up blend pipeline");
     VkViewport viewport;
     viewport.height = (float) engine->height;
     viewport.width = (float) engine->width;
@@ -1487,7 +1611,7 @@ int setupBlendPipeline(struct engine* engine) {
     vi.flags = 0;
     vi.vertexBindingDescriptionCount = 1;
     vi.pVertexBindingDescriptions = &engine->vertexInputBindingDescription;
-    vi.vertexAttributeDescriptionCount = 2;
+    vi.vertexAttributeDescriptionCount = 1;
     vi.pVertexAttributeDescriptions = engine->vertexInputAttributeDescription;
 
     VkPipelineInputAssemblyStateCreateInfo ia;
@@ -1554,6 +1678,13 @@ int setupBlendPipeline(struct engine* engine) {
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
+    ds.back.failOp = VK_STENCIL_OP_KEEP;
+    ds.back.passOp = VK_STENCIL_OP_KEEP;
+    ds.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    ds.back.compareMask = 0;
+    ds.back.reference = 0;
+    ds.back.depthFailOp = VK_STENCIL_OP_KEEP;
+    ds.back.writeMask = 0;
     ds.minDepthBounds = 0;
     ds.maxDepthBounds = 0;
     ds.stencilTestEnable = VK_FALSE;
@@ -1589,7 +1720,7 @@ int setupBlendPipeline(struct engine* engine) {
     VkGraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.pNext = NULL;
-    pipelineInfo.layout = engine->pipelineLayout;
+    pipelineInfo.layout = engine->blendPipelineLayout;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = 0;
     pipelineInfo.flags = 0;
@@ -1600,12 +1731,14 @@ int setupBlendPipeline(struct engine* engine) {
     pipelineInfo.pTessellationState = NULL;
     pipelineInfo.pMultisampleState = &ms;
     pipelineInfo.pDynamicState = &dynamicState;
+    if (dynamicState.dynamicStateCount==0)
+        pipelineInfo.pDynamicState=NULL;
     pipelineInfo.pViewportState = &vp;
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.stageCount = 2;
     pipelineInfo.renderPass = engine->renderPass[0];
-    pipelineInfo.subpass = 0;
+    pipelineInfo.subpass = 2;
 
     VkResult res;
     res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL,
@@ -1665,7 +1798,7 @@ int setupUniforms(struct engine* engine)
 
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(engine->vkDevice, uniformBuffer, &memoryRequirements);
-    uint found;
+    uint8_t found;
     uint32_t typeBits = memoryRequirements.memoryTypeBits;
     VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     uint32_t typeIndex;
@@ -1713,14 +1846,14 @@ int setupUniforms(struct engine* engine)
         return -1;
     }
 
-    engine->descriptorSetLayouts = new VkDescriptorSetLayout[2];
+    engine->descriptorSetLayouts = new VkDescriptorSetLayout[3];
 
-    for (int i = 0; i <2; i++) {
+    for (int i = 0; i <3; i++) {
         VkDescriptorSetLayoutBinding layout_bindings[1];
         layout_bindings[0].binding = 0;
-        layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        layout_bindings[0].descriptorType = (i<2) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
         layout_bindings[0].descriptorCount = 1;
-        layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        layout_bindings[0].stageFlags = (i<2) ? VK_SHADER_STAGE_VERTEX_BIT : VK_SHADER_STAGE_FRAGMENT_BIT;
         layout_bindings[0].pImmutableSamplers = NULL;
 
         //Next take layout bindings and use them to create a descriptor set layout
@@ -1859,68 +1992,79 @@ void createSecondaryBuffers(struct engine* engine)
             return;
         }
     }
-    for (int i = 0; i< engine->swapchainImageCount; i++) {
-        int cmdBuffIndex = i + 3;
-        VkResult res;
-        VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
-        commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-        commandBufferInheritanceInfo.pNext = 0;
-        commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
-        commandBufferInheritanceInfo.subpass = 0;
-        commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
-        commandBufferInheritanceInfo.occlusionQueryEnable = 0;
-        commandBufferInheritanceInfo.queryFlags = 0;
-        commandBufferInheritanceInfo.pipelineStatistics = 0;
+    for (int layer = 0; layer < 4; layer++) {
+        for (int i = 0; i < engine->swapchainImageCount; i++) {
+            int cmdBuffIndex = 3 + layer * 4 + i;
+            VkResult res;
+            VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
+            commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+            commandBufferInheritanceInfo.pNext = 0;
+#ifdef dontUseSubpasses
+            commandBufferInheritanceInfo.renderPass = engine->renderPass[layer*2+1];
+            commandBufferInheritanceInfo.subpass = 0;
+            LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
+#else
+            commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+            commandBufferInheritanceInfo.subpass = layer;
+#endif
+            commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
+            commandBufferInheritanceInfo.occlusionQueryEnable = 0;
+            commandBufferInheritanceInfo.queryFlags = 0;
+            commandBufferInheritanceInfo.pipelineStatistics = 0;
 
-        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandBufferBeginInfo.pNext = NULL;
-        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
-                                       VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-        commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
-        res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex], &commandBufferBeginInfo);
-        if (res != VK_SUCCESS) {
-            printf("vkBeginCommandBuffer returned error.\n");
-            return;
-        }
+            VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+            commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            commandBufferBeginInfo.pNext = NULL;
+            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
+                                           VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+            commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
+            res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                       &commandBufferBeginInfo);
+            if (res != VK_SUCCESS) {
+                printf("vkBeginCommandBuffer returned error.\n");
+                return;
+            }
 
-        vkCmdBindPipeline(engine->secondaryCommandBuffers[cmdBuffIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          engine->peelPipeline);
+            vkCmdBindPipeline(engine->secondaryCommandBuffers[cmdBuffIndex],
+                              VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              engine->peelPipeline);
 
-        VkRect2D scissor;
-        if (engine->splitscreen)
-            scissor.extent.width=engine->width/2;
-        else
-            scissor.extent.width=engine->width;
-        scissor.extent.height = engine->height;
-        if (engine->splitscreen)
-            scissor.offset.x = scissor.extent.width;
-        else
-            scissor.offset.x = 0;
-        scissor.offset.y = 0;
+            VkRect2D scissor;
+            if (engine->splitscreen)
+                scissor.extent.width = engine->width / 2;
+            else
+                scissor.extent.width = engine->width;
+            scissor.extent.height = engine->height;
+            if (engine->splitscreen)
+                scissor.offset.x = scissor.extent.width;
+            else
+                scissor.offset.x = 0;
+            scissor.offset.y = 0;
 
-        vkCmdSetScissor(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1, &scissor);
+            vkCmdSetScissor(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1, &scissor);
 
-        vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
-                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                engine->pipelineLayout, 1, 1,
-                                &engine->sceneDescriptorSet, 0, NULL);
-        VkDeviceSize offsets[1] = {0};
-        vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1, &engine->vertexBuffer,
-                               offsets);
-        for (int object = 0; object < 100; object++) {
             vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    engine->pipelineLayout, 0, 1,
-                                    &engine->modelDescriptorSets[object], 0, NULL);
+                                    engine->pipelineLayout, 1, 1,
+                                    &engine->sceneDescriptorSet, 0, NULL);
+            VkDeviceSize offsets[1] = {0};
+            vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1,
+                                   &engine->vertexBuffer,
+                                   offsets);
+            for (int object = 0; object < 100; object++) {
+                vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        engine->pipelineLayout, 0, 1,
+                                        &engine->modelDescriptorSets[object], 0, NULL);
 
-            vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
-        }
+                vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
+            }
 
-        res = vkEndCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex]);
-        if (res != VK_SUCCESS) {
-            printf("vkBeginCommandBuffer returned error.\n");
-            return;
+            res = vkEndCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex]);
+            if (res != VK_SUCCESS) {
+                printf("vkBeginCommandBuffer returned error.\n");
+                return;
+            }
         }
     }
 }
@@ -2037,10 +2181,11 @@ static void engine_draw_frame(struct engine* engine) {
                          0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 
     vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
-                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
     if (engine->splitscreen) {
-        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1, &engine->secondaryCommandBuffers[currentBuffer]);
+        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+                             &engine->secondaryCommandBuffers[currentBuffer]);
     }
 //    vkCmdNextSubpass(engine->renderCommandBuffer[i], VK_SUBPASS_CONTENTS_INLINE);
 //    for (int layer = 0; layer < 4; layer++) {
@@ -2049,18 +2194,33 @@ static void engine_draw_frame(struct engine* engine) {
 //        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
 //                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
 //    }
-//    for (int layer = 0; layer < 4; layer++) {
-//        //Peel
-//        vkCmdNextSubpass(engine->renderCommandBuffer[i],
-//                         VK_SUBPASS_CONTENTS_INLINE);
+    for (int layer = 0; layer < 4; layer++) {
+        int cmdBuffIndex = 3 + layer * 4 + currentBuffer;
+        //Peel
+#ifdef dontUseSubpasses
+        vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+        renderPassBeginInfo.renderPass = engine->renderPass[layer*2+1];
+        vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+#else
+        vkCmdNextSubpass(engine->renderCommandBuffer[i],
+                         VK_SUBPASS_CONTENTS_INLINE);
+#endif
+        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+                             &engine->secondaryCommandBuffers[cmdBuffIndex]);
+        //Blend
+#ifdef dontUseSubpasses
+        vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+        renderPassBeginInfo.renderPass = engine->renderPass[layer*2+2];
+        vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+        VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+#else
+        vkCmdNextSubpass(engine->renderCommandBuffer[i],
+                         VK_SUBPASS_CONTENTS_INLINE);
+#endif
 //        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
 //                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
-//        //Blend
-//        vkCmdNextSubpass(engine->renderCommandBuffer[i],
-//                         VK_SUBPASS_CONTENTS_INLINE);
-//        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
-//                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
-//    }
+    }
 
 //    VkCommandBuffer buffers[40];
 //    for (int i = 0; i< 8; i++)
@@ -2183,6 +2343,7 @@ static void engine_term_display(struct engine* engine) {
 //    engine->surface = EGL_NO_SURFACE;
 }
 
+#ifdef ANDROID
 /**
  * Process the next input event.
  */
@@ -2360,4 +2521,77 @@ void android_main(struct android_app* state) {
         }
     }
 }
+#endif
 //END_INCLUDE(all)
+
+#ifndef ANDROID
+int main()
+{
+    struct engine engine;
+    engine.width=800;
+    engine.height=600;
+
+    //Setup XCB Connection:
+    const xcb_setup_t *setup;
+    xcb_screen_iterator_t iter;
+    int scr;
+    engine.xcbConnection= xcb_connect(NULL, &scr);
+    if (engine.xcbConnection == NULL) {
+      printf("Cannot find a compatible Vulkan ICD.\n");
+      return -1;
+    }
+
+    setup = xcb_get_setup(engine.xcbConnection);
+    iter = xcb_setup_roots_iterator(setup);
+    while (scr-- > 0)
+      xcb_screen_next(&iter);
+    xcb_screen_t *screen = iter.data;
+
+    //Create an xcb window:
+    uint32_t value_mask, value_list[32];
+
+    engine.window = xcb_generate_id(engine.xcbConnection);
+
+    value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+    value_list[0] = screen->black_pixel;
+    value_list[1] = XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_BUTTON_PRESS;
+
+    xcb_create_window(engine.xcbConnection, XCB_COPY_FROM_PARENT, engine.window,
+                      screen->root, 0, 0, engine.width, engine.height, 0,
+                      XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual,
+                      value_mask, value_list);
+
+    //We want to know when the user presses the close button:
+    xcb_intern_atom_cookie_t cookie = xcb_intern_atom(engine.xcbConnection, 1, 12, "WM_PROTOCOLS");
+    xcb_intern_atom_reply_t* reply = xcb_intern_atom_reply(engine.xcbConnection, cookie, 0);
+
+    xcb_intern_atom_cookie_t cookie2 = xcb_intern_atom(engine.xcbConnection, 0, 16, "WM_DELETE_WINDOW");
+    xcb_intern_atom_reply_t* delete_window_reply = xcb_intern_atom_reply(engine.xcbConnection, cookie2, 0);
+
+    xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, (*reply).atom, 4, 32, 1, &(*delete_window_reply).atom);
+    char* windowTitle="Vulkan Example";
+    xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(windowTitle), windowTitle);
+
+    //This demo does not include the code necessary to handle resizing the framebuffers
+    //so lets ask the window manager to disable window resizing.
+    xcb_size_hints_t hints;
+    hints.flags=0;
+    xcb_icccm_size_hints_set_min_size(&hints, engine.width, engine.height);
+    xcb_icccm_size_hints_set_max_size(&hints, engine.width, engine.height);
+    xcb_icccm_set_wm_size_hints(engine.xcbConnection, engine.window, XCB_ATOM_WM_NORMAL_HINTS, &hints);
+
+    xcb_map_window(engine.xcbConnection, engine.window);
+    xcb_flush(engine.xcbConnection);
+
+      //Wait until the window has been exposed:
+    xcb_generic_event_t *e;
+    while ((e = xcb_wait_for_event(engine.xcbConnection))) {
+      if ((e->response_type & ~0x80) == XCB_EXPOSE)
+        break;
+    }
+
+    engine_init_display(&engine);
+    return 0;
+}
+
+#endif
