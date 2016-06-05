@@ -105,6 +105,7 @@ struct engine {
     VkDescriptorSet *modelDescriptorSets;
     VkDescriptorSet identityModelDescriptorSet;
     VkDescriptorSet identitySceneDescriptorSet;
+    VkDescriptorSet inputAttachmentDescriptorSet;
     uint32_t modelBufferValsOffset;
     VkBuffer vertexBuffer;
     VkQueue queue;
@@ -856,6 +857,7 @@ static int engine_init_display(struct engine* engine) {
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
     commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(8+2);
 
+    LOGI ("Creating %d secondary command buffers.\n", engine->swapchainImageCount*(8+2));
     res = vkAllocateCommandBuffers(engine->vkDevice, &commandBufferAllocateInfo, engine->secondaryCommandBuffers);
     if (res != VK_SUCCESS) {
         LOGE ("vkAllocateCommandBuffers returned error.\n");
@@ -904,7 +906,7 @@ static int engine_init_display(struct engine* engine) {
     peelcolor_reference.attachment = 2;
     peelcolor_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkSubpassDependency subpassDependencies[9];
+    VkSubpassDependency subpassDependencies[36];
     VkSubpassDescription subpasses[9];
     subpasses[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpasses[0].flags = 0;
@@ -918,15 +920,9 @@ static int engine_init_display(struct engine* engine) {
     subpasses[0].pPreserveAttachments = NULL;
 
     uint32_t colour_attachment = 0;
+    uint32_t peel_attachment = 2;
     for (int i =0; i<4; i++)
-    {
-        subpassDependencies[i*2].srcSubpass = i*2;
-        subpassDependencies[i*2].dstSubpass = i*2+1;
-        subpassDependencies[i*2].srcStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        subpassDependencies[i*2].dstStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        subpassDependencies[i*2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        subpassDependencies[i*2].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        subpassDependencies[i*2].dependencyFlags = 0;
+    {        
 
         subpasses[i * 2 + 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 1].flags = 0;
@@ -939,14 +935,6 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 1].preserveAttachmentCount = 1;
         subpasses[i * 2 + 1].pPreserveAttachments = &colour_attachment;
 
-        subpassDependencies[i*2+1].srcSubpass = i*2+1;
-        subpassDependencies[i*2+1].dstSubpass = i*2+2;
-        subpassDependencies[i*2+1].srcStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        subpassDependencies[i*2+1].dstStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        subpassDependencies[i*2+1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        subpassDependencies[i*2+1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        subpassDependencies[i*2+1].dependencyFlags = 0;
-
         subpasses[i * 2 + 2].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 2].flags = 0;
         subpasses[i * 2 + 2].inputAttachmentCount = 1;
@@ -955,10 +943,26 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 2].pColorAttachments = &color_reference;
         subpasses[i * 2 + 2].pResolveAttachments = NULL;
         subpasses[i * 2 + 2].pDepthStencilAttachment = &depth_reference;
-        subpasses[i * 2 + 2].preserveAttachmentCount = 0;
-        subpasses[i * 2 + 2].pPreserveAttachments = NULL;
+        subpasses[i * 2 + 2].preserveAttachmentCount = 1;
+        subpasses[i * 2 + 2].pPreserveAttachments = &peel_attachment;
+    }
 
-
+    //For simplisity every subpass will depend on all subpasses before it in the same way:
+    int subpassDependencyIndex=0;
+    for (int subpass=1; subpass<9; subpass++)
+    {
+        for (int dependantSubpass=0; dependantSubpass<subpass; dependantSubpass++)
+        {
+//            LOGI("Creating subpassDependency %d srcSubpass=%d dstSubpass=%d", subpassDependencyIndex, dependantSubpass, subpass);
+            subpassDependencies[subpassDependencyIndex].srcSubpass = dependantSubpass;
+            subpassDependencies[subpassDependencyIndex].dstSubpass = subpass;
+            subpassDependencies[subpassDependencyIndex].srcStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+            subpassDependencies[subpassDependencyIndex].dstStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+            subpassDependencies[subpassDependencyIndex].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            subpassDependencies[subpassDependencyIndex].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            subpassDependencies[subpassDependencyIndex].dependencyFlags = 0;
+            subpassDependencyIndex++;
+        }
     }
 
     VkRenderPassCreateInfo rp_info[9];
@@ -970,7 +974,7 @@ static int engine_init_display(struct engine* engine) {
     rp_info[0].pAttachments = attachments;
     rp_info[0].subpassCount = 9;
     rp_info[0].pSubpasses = subpasses;
-    rp_info[0].dependencyCount = 8;
+    rp_info[0].dependencyCount = 36;
     rp_info[0].pDependencies = subpassDependencies;
     res = vkCreateRenderPass(engine->vkDevice, &rp_info[0], NULL, &engine->renderPass[0]);
     if (res != VK_SUCCESS) {
@@ -1028,6 +1032,7 @@ static int engine_init_display(struct engine* engine) {
     //Now use the descriptor layout to create a pipeline layout
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo;
     pPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pPipelineLayoutCreateInfo.flags = 0;
     pPipelineLayoutCreateInfo.pNext = NULL;
     pPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
     pPipelineLayoutCreateInfo.pPushConstantRanges = NULL;
@@ -1284,6 +1289,7 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     //No dynamic state:
     memset(dynamicStateEnables, 0, sizeof dynamicStateEnables);
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.flags = 0;
     dynamicState.pNext = NULL;
     dynamicState.pDynamicStates = dynamicStateEnables;
     dynamicState.dynamicStateCount = 0;
@@ -1451,6 +1457,7 @@ int setupPeelPipeline(struct engine* engine) {
     //No dynamic state:
     memset(dynamicStateEnables, 0, sizeof dynamicStateEnables);
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.flags = 0;
     dynamicState.pNext = NULL;
     dynamicState.pDynamicStates = dynamicStateEnables;
     dynamicState.dynamicStateCount = 0;
@@ -1611,6 +1618,7 @@ int setupBlendPipeline(struct engine* engine) {
     //No dynamic state:
     memset(dynamicStateEnables, 0, sizeof dynamicStateEnables);
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.flags = 0;
     dynamicState.pNext = NULL;
     dynamicState.pDynamicStates = dynamicStateEnables;
     dynamicState.dynamicStateCount = 0;
@@ -1765,15 +1773,18 @@ int setupUniforms(struct engine* engine)
     VkResult res;
 
     //Create a descriptor pool
-    VkDescriptorPoolSize typeCounts[1];
+    VkDescriptorPoolSize typeCounts[2];
     typeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     typeCounts[0].descriptorCount = 103;
+    typeCounts[1].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    typeCounts[1].descriptorCount = 1;
 
     VkDescriptorPoolCreateInfo descriptorPoolInfo;
     descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptorPoolInfo.flags = 0;
     descriptorPoolInfo.pNext = NULL;
-    descriptorPoolInfo.maxSets = 103;
-    descriptorPoolInfo.poolSizeCount = 1;
+    descriptorPoolInfo.maxSets = 104;
+    descriptorPoolInfo.poolSizeCount = 2;
     descriptorPoolInfo.pPoolSizes = typeCounts;
 
     VkDescriptorPool descriptorPool;
@@ -1783,7 +1794,7 @@ int setupUniforms(struct engine* engine)
         return -1;
     }
 
-    printf ("minUniformBufferOffsetAlignment %d.\n", engine->deviceProperties.limits.minUniformBufferOffsetAlignment);
+    printf ("minUniformBufferOffsetAlignment %d.\n", (int)engine->deviceProperties.limits.minUniformBufferOffsetAlignment);
     engine->modelBufferValsOffset = sizeof(float)*16;
     if (engine->modelBufferValsOffset < engine->deviceProperties.limits.minUniformBufferOffsetAlignment)
         engine->modelBufferValsOffset = engine->deviceProperties.limits.minUniformBufferOffsetAlignment;
@@ -1869,6 +1880,7 @@ int setupUniforms(struct engine* engine)
         //Next take layout bindings and use them to create a descriptor set layout
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
         descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCreateInfo.flags = 0;
         descriptorSetLayoutCreateInfo.pNext = NULL;
         descriptorSetLayoutCreateInfo.bindingCount = 1;
         descriptorSetLayoutCreateInfo.pBindings = layout_bindings;
@@ -1905,7 +1917,7 @@ int setupUniforms(struct engine* engine)
     engine->modelDescriptorSets = new VkDescriptorSet[100];
     VkDescriptorSetLayout sceneLayouts[100];
     for (int i=0; i<100; i++)
-        sceneLayouts[i]=engine->descriptorSetLayouts[0];
+        sceneLayouts[i]=engine->descriptorSetLayouts[1];
 
     descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptorSetAllocateInfo.pNext = NULL;
@@ -1931,8 +1943,21 @@ int setupUniforms(struct engine* engine)
         return -1;
     }
 
+    //The input attachment:
+    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocateInfo.pNext = NULL;
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts = &engine->descriptorSetLayouts[2];
+    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, &engine->inputAttachmentDescriptorSet);
+    if (res != VK_SUCCESS) {
+        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
+        return -1;
+    }
+
+
     VkDescriptorBufferInfo uniformBufferInfo[103];
-    VkWriteDescriptorSet writes[103];
+    VkWriteDescriptorSet writes[104];
     for (int i = 0; i<103; i++) {
         uniformBufferInfo[i].buffer = uniformBuffer;
         uniformBufferInfo[i].offset = engine->modelBufferValsOffset*i;
@@ -1979,7 +2004,21 @@ int setupUniforms(struct engine* engine)
     writes[102].dstArrayElement = 0;
     writes[102].dstBinding = 0;
 
-    vkUpdateDescriptorSets(engine->vkDevice, 103, writes, 0, NULL);
+    //The input attachment:
+    VkDescriptorImageInfo uniformImageInfo;
+    uniformImageInfo.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    uniformImageInfo.imageView=engine->peelView;
+    uniformImageInfo.sampler=NULL;
+    writes[103].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[103].pNext = NULL;
+    writes[103].dstSet = engine->inputAttachmentDescriptorSet;
+    writes[103].descriptorCount = 1;
+    writes[103].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    writes[103].pImageInfo=&uniformImageInfo;
+    writes[103].dstArrayElement = 0;
+    writes[103].dstBinding = 0;
+
+    vkUpdateDescriptorSets(engine->vkDevice, 104, writes, 0, NULL);
 
     LOGI ("Descriptor sets updated %d.\n", res);
     return 0;
@@ -1988,6 +2027,7 @@ int setupUniforms(struct engine* engine)
 void createSecondaryBuffers(struct engine* engine)
 {
     LOGI("Creating Secondary Buffers");
+    LOGI("Creating trad blend buffers");
     engine->rebuildCommadBuffersRequired=false;
     for (int i = 0; i< engine->swapchainImageCount; i++) {
         VkResult res;
@@ -2038,6 +2078,7 @@ void createSecondaryBuffers(struct engine* engine)
             return;
         }
     }
+    LOGI("Creating peel stage buffers");
     for (int layer = 0; layer < 4; layer++) {
         for (int i = 0; i < engine->swapchainImageCount; i++) {
             int cmdBuffIndex = 3 + layer * 4 + i;
@@ -2051,7 +2092,7 @@ void createSecondaryBuffers(struct engine* engine)
             LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
 #else
             commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
-            commandBufferInheritanceInfo.subpass = layer;
+            commandBufferInheritanceInfo.subpass = layer*2+1;
 #endif
             commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
             commandBufferInheritanceInfo.occlusionQueryEnable = 0;
@@ -2113,6 +2154,7 @@ void createSecondaryBuffers(struct engine* engine)
             }
         }
     }
+    LOGI("Creating blend stage buffers");
     for (int layer = 0; layer < 4; layer++) {
         for (int i = 0; i < engine->swapchainImageCount; i++) {
             int cmdBuffIndex = 3 + (4*engine->swapchainImageCount) + layer * 4 + i;
@@ -2125,8 +2167,8 @@ void createSecondaryBuffers(struct engine* engine)
             commandBufferInheritanceInfo.subpass = 0;
             LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
 #else
-            commandBufferInheritanceInfo.renderPass = engine->renderPass[2];
-            commandBufferInheritanceInfo.subpass = layer;
+            commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+            commandBufferInheritanceInfo.subpass = layer*2+2;
 #endif
             commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
             commandBufferInheritanceInfo.occlusionQueryEnable = 0;
@@ -2139,6 +2181,8 @@ void createSecondaryBuffers(struct engine* engine)
             commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
                                            VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
             commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
+
+            LOGI("Creating secondaryCommandBuffer %d using subpass %d", cmdBuffIndex, layer*2+2);
             res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
                                        &commandBufferBeginInfo);
             if (res != VK_SUCCESS) {
@@ -2168,6 +2212,7 @@ void createSecondaryBuffers(struct engine* engine)
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     engine->blendPipelineLayout, 1, 1,
                                     &engine->identitySceneDescriptorSet, 0, NULL);
+
             VkDeviceSize offsets[1] = {0};
             vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1,
                                    &engine->vertexBuffer,
@@ -2178,13 +2223,19 @@ void createSecondaryBuffers(struct engine* engine)
                                     engine->blendPipelineLayout, 0, 1,
                                     &engine->identityModelDescriptorSet, 0, NULL);
 
+            vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    engine->blendPipelineLayout, 2, 1,
+                                    &engine->inputAttachmentDescriptorSet, 0, NULL);
+
+
             vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
 //            for (int object = 0; object < 100; object++) {
 //                vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
 //                                        VK_PIPELINE_BIND_POINT_GRAPHICS,
 //                                        engine->blendPipelineLayout, 0, 1,
 //                                        &engine->modelDescriptorSets[object], 0, NULL);
-
+//
 //                vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
 //            }
 
@@ -2707,7 +2758,7 @@ int main()
     xcb_intern_atom_reply_t* delete_window_reply = xcb_intern_atom_reply(engine.xcbConnection, cookie2, 0);
 
     xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, (*reply).atom, 4, 32, 1, &(*delete_window_reply).atom);
-    char* windowTitle="Vulkan depth peel demo";
+    char const* windowTitle="Vulkan depth peel demo";
     xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(windowTitle), windowTitle);
 
     //This demo does not include the code necessary to handle resizing the framebuffers
@@ -2730,6 +2781,7 @@ int main()
 
     engine_init_display(&engine);
     bool done=false;
+//    for (int i=0; i<2; i++) {
     while (!(done==1)) {
         while (1==1) {
             e = xcb_poll_for_event(engine.xcbConnection);
