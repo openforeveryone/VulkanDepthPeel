@@ -9,4 +9,5 @@ layout (location = 0) out vec4 outColor;
 void main() {
    vec4 color = subpassLoad(subpass);
    outColor = vec4(color.r*color.a, color.g*color.a, color.b*color.a, color.a);
+//   outColor = color;
 }

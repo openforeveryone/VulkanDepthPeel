@@ -732,7 +732,7 @@ static int engine_init_display(struct engine* engine) {
         imageCreateInfo.queueFamilyIndexCount = 0;
         imageCreateInfo.pQueueFamilyIndices = NULL;
         imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
         imageCreateInfo.flags = 0;
 
         //Create image for peel buffer
@@ -906,6 +906,9 @@ static int engine_init_display(struct engine* engine) {
     peelcolor_reference.attachment = 2;
     peelcolor_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
 
+    uint32_t colour_attachment = 0;
+    uint32_t peel_attachment = 2;
+
     VkSubpassDependency subpassDependencies[36];
     VkSubpassDescription subpasses[9];
     subpasses[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -916,11 +919,9 @@ static int engine_init_display(struct engine* engine) {
     subpasses[0].pColorAttachments = &color_reference;
     subpasses[0].pResolveAttachments = NULL;
     subpasses[0].pDepthStencilAttachment = &depth_reference;
-    subpasses[0].preserveAttachmentCount = 0;
-    subpasses[0].pPreserveAttachments = NULL;
+    subpasses[0].preserveAttachmentCount = 1;
+    subpasses[0].pPreserveAttachments = &peel_attachment;
 
-    uint32_t colour_attachment = 0;
-    uint32_t peel_attachment = 2;
     for (int i =0; i<4; i++)
     {        
 
@@ -1234,8 +1235,8 @@ static int engine_init_display(struct engine* engine) {
     engine->vertexInputAttributeDescription[1].offset = 16;
 
     setupTraditionalBlendPipeline(engine);
-    setupBlendPipeline(engine);
     setupPeelPipeline(engine);
+    setupBlendPipeline(engine);
 
     VkSemaphoreCreateInfo presentCompleteSemaphoreCreateInfo;
     presentCompleteSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -2313,13 +2314,11 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    int i = 0;
-
     //Now record the primary command buffer:
     VkRenderPassBeginInfo renderPassBeginInfo;
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassBeginInfo.pNext = NULL;
-    renderPassBeginInfo.renderPass = engine->renderPass[i];
+    renderPassBeginInfo.renderPass = engine->renderPass[0];
     renderPassBeginInfo.framebuffer = engine->framebuffers[currentBuffer];
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
@@ -2331,10 +2330,9 @@ static void engine_draw_frame(struct engine* engine) {
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = NULL;
-    commandBufferBeginInfo.flags = (i == 0) ? 0 : VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
     commandBufferBeginInfo.flags = 0;
     commandBufferBeginInfo.pInheritanceInfo = NULL;
-    res = vkBeginCommandBuffer(engine->renderCommandBuffer[i], &commandBufferBeginInfo);
+    res = vkBeginCommandBuffer(engine->renderCommandBuffer[0], &commandBufferBeginInfo);
     if (res != VK_SUCCESS) {
         printf("vkBeginCommandBuffer returned error.\n");
         return;
@@ -2358,14 +2356,15 @@ static void engine_draw_frame(struct engine* engine) {
     imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    vkCmdPipelineBarrier(engine->renderCommandBuffer[i], srcStageFlags, destStageFlags, 0,
+    vkCmdPipelineBarrier(engine->renderCommandBuffer[0], srcStageFlags, destStageFlags, 0,
                          0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 
-    vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+    vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
                              VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
     if (engine->splitscreen) {
-        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+        //Draw using traditional depth dependent transparency:
+        vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                              &engine->secondaryCommandBuffers[currentBuffer]);
     }
 //    vkCmdNextSubpass(engine->renderCommandBuffer[i], VK_SUBPASS_CONTENTS_INLINE);
@@ -2375,31 +2374,32 @@ static void engine_draw_frame(struct engine* engine) {
 //        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
 //                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
 //    }
+
     for (int layer = 0; layer < 4; layer++) {
         int cmdBuffIndex = 3 + layer * 4 + currentBuffer;
         //Peel
 #ifdef dontUseSubpasses
-        vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+        vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
         renderPassBeginInfo.renderPass = engine->renderPass[layer*2+1];
-        vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+        vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
                              VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #else
-        vkCmdNextSubpass(engine->renderCommandBuffer[i],
+        vkCmdNextSubpass(engine->renderCommandBuffer[0],
                          VK_SUBPASS_CONTENTS_INLINE);
 #endif
-        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+        vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                              &engine->secondaryCommandBuffers[cmdBuffIndex]);
         //Blend
 #ifdef dontUseSubpasses
-        vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+        vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
         renderPassBeginInfo.renderPass = engine->renderPass[layer*2+2];
-        vkCmdBeginRenderPass(engine->renderCommandBuffer[i], &renderPassBeginInfo,
+        vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #else
-        vkCmdNextSubpass(engine->renderCommandBuffer[i],
+        vkCmdNextSubpass(engine->renderCommandBuffer[0],
                          VK_SUBPASS_CONTENTS_INLINE);
 #endif
-        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+        vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                              &engine->secondaryCommandBuffers[cmdBuffIndex + engine->swapchainImageCount * 4]);
     }
 
@@ -2411,7 +2411,7 @@ static void engine_draw_frame(struct engine* engine) {
 //    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1, buffers);
 
 
-    vkCmdEndRenderPass(engine->renderCommandBuffer[i]);
+    vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
 
     VkImageMemoryBarrier prePresentBarrier;
     prePresentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -2428,11 +2428,11 @@ static void engine_draw_frame(struct engine* engine) {
     prePresentBarrier.subresourceRange.baseArrayLayer = 0;
     prePresentBarrier.subresourceRange.layerCount = 1;
     prePresentBarrier.image = engine->swapChainImages[currentBuffer];
-    vkCmdPipelineBarrier(engine->renderCommandBuffer[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+    vkCmdPipelineBarrier(engine->renderCommandBuffer[0], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
                          NULL, 1, &prePresentBarrier);
 
-    res = vkEndCommandBuffer(engine->renderCommandBuffer[i]);
+    res = vkEndCommandBuffer(engine->renderCommandBuffer[0]);
     if (res != VK_SUCCESS) {
         LOGE ("vkEndCommandBuffer returned error %d.\n", res);
         return;
