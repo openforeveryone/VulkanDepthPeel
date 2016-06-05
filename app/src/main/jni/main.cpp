@@ -30,7 +30,7 @@
 #include "Simulation.h"
 #include "log.h"
 
-#ifdef ANDROID
+#ifdef __ANDROID__
 #include <android/sensor.h>
 #include <android_native_app_glue.h>
 #include "stdredirect.h"
@@ -67,7 +67,7 @@ struct saved_state {
 struct engine {
     struct android_app* app;
 
-#ifdef ANDROID
+#ifdef __ANDROID__
     ASensorManager* sensorManager;
     const ASensor* accelerometerSensor;
     ASensorEventQueue* sensorEventQueue;
@@ -103,6 +103,8 @@ struct engine {
     VkDescriptorSetLayout *descriptorSetLayouts;
     VkDescriptorSet sceneDescriptorSet;
     VkDescriptorSet *modelDescriptorSets;
+    VkDescriptorSet identityModelDescriptorSet;
+    VkDescriptorSet identitySceneDescriptorSet;
     uint32_t modelBufferValsOffset;
     VkBuffer vertexBuffer;
     VkQueue queue;
@@ -128,7 +130,7 @@ struct engine {
 char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &size)
 {    
     ok=false;
-#ifdef ANDROID
+#ifdef __ANDROID__
     char *buffer = NULL;
     AAsset* asset = AAssetManager_open(pEngine->app->activity->assetManager, filename, AASSET_MODE_STREAMING);
     if (!asset) {
@@ -184,7 +186,7 @@ static int engine_init_display(struct engine* engine) {
 
     LOGI ("Initializing Vulkan\n");
 
-#ifdef ANDROID
+#ifdef __ANDROID__
     //Redirect stdio to android log so vulkan validation layer output is not lost.
     //Redirect code from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
     /* make stdout line-buffered and stderr unbuffered */
@@ -226,7 +228,7 @@ static int engine_init_display(struct engine* engine) {
 
     const char *enabledInstanceExtensionNames[] = {
             VK_KHR_SURFACE_EXTENSION_NAME,
-    #ifdef ANDROID
+    #ifdef __ANDROID__
             VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
     #else
             VK_KHR_XCB_SURFACE_EXTENSION_NAME
@@ -250,7 +252,11 @@ static int engine_init_display(struct engine* engine) {
     inst_info.pApplicationInfo = &app_info;
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
+#ifdef __ANDROID__
+    inst_info.enabledLayerCount = 1;
+#else
     inst_info.enabledLayerCount = 0;
+#endif
     inst_info.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateInstance(&inst_info, NULL, &engine->vkInstance);
@@ -268,8 +274,8 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("GPU Count: %i\n", deviceBufferSize);
     if (deviceBufferSize==0)
     {
-        LOGE("No Vulkan device");        
-#ifdef ANDROID
+        LOGE("No Vulkan device");
+#ifdef __ANDROID__
         ANativeActivity_finish(engine->app->activity);
 #endif
         return -1;
@@ -286,7 +292,7 @@ static int engine_init_display(struct engine* engine) {
     engine->physicalDevice=physicalDevices[0];
 
     VkSurfaceKHR surface;
-#ifdef ANDROID
+#ifdef __ANDROID__
     VkAndroidSurfaceCreateInfoKHR instInfo;
     instInfo.sType=VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
     instInfo.pNext=NULL;
@@ -372,7 +378,11 @@ static int engine_init_display(struct engine* engine) {
     dci.enabledExtensionCount = 1;
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
+#ifdef __ANDROID__
+    dci.enabledLayerCount = 1;
+#else
     dci.enabledLayerCount = 0;
+#endif
     dci.ppEnabledLayerNames = enabledLayerNames;
 
     res = vkCreateDevice(engine->physicalDevice, &dci, NULL, &engine->vkDevice);
@@ -842,9 +852,9 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
-    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*(4+2)];
+    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*(8+2)];
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(4+2);
+    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(8+2);
 
     res = vkAllocateCommandBuffers(engine->vkDevice, &commandBufferAllocateInfo, engine->secondaryCommandBuffers);
     if (res != VK_SUCCESS) {
@@ -1235,7 +1245,7 @@ static int engine_init_display(struct engine* engine) {
 
     createSecondaryBuffers(engine);
 
-#ifdef ANDROID
+#ifdef __ANDROID__
     LOGI("Restoring working directory");
     chdir(oldcwd);
 
@@ -1757,12 +1767,12 @@ int setupUniforms(struct engine* engine)
     //Create a descriptor pool
     VkDescriptorPoolSize typeCounts[1];
     typeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    typeCounts[0].descriptorCount = 101;
+    typeCounts[0].descriptorCount = 103;
 
     VkDescriptorPoolCreateInfo descriptorPoolInfo;
     descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptorPoolInfo.pNext = NULL;
-    descriptorPoolInfo.maxSets = 101;
+    descriptorPoolInfo.maxSets = 103;
     descriptorPoolInfo.poolSizeCount = 1;
     descriptorPoolInfo.pPoolSizes = typeCounts;
 
@@ -1884,12 +1894,18 @@ int setupUniforms(struct engine* engine)
     if (res != VK_SUCCESS) {
         printf ("vkAllocateDescriptorSets returned error %d.\n", res);
         return -1;
+    }    
+
+    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, &engine->identitySceneDescriptorSet);
+    if (res != VK_SUCCESS) {
+        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
+        return -1;
     }
 
     engine->modelDescriptorSets = new VkDescriptorSet[100];
     VkDescriptorSetLayout sceneLayouts[100];
     for (int i=0; i<100; i++)
-        sceneLayouts[i]=engine->descriptorSetLayouts[1];
+        sceneLayouts[i]=engine->descriptorSetLayouts[0];
 
     descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptorSetAllocateInfo.pNext = NULL;
@@ -1903,13 +1919,26 @@ int setupUniforms(struct engine* engine)
         return -1;
     }
 
-    VkDescriptorBufferInfo uniformBufferInfo[101];
-    VkWriteDescriptorSet writes[101];
-    for (int i = 0; i<100; i++) {
+    descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocateInfo.pNext = NULL;
+    descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocateInfo.descriptorSetCount = 1;
+    descriptorSetAllocateInfo.pSetLayouts = engine->descriptorSetLayouts;
+
+    res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, &engine->identityModelDescriptorSet);
+    if (res != VK_SUCCESS) {
+        printf ("vkAllocateDescriptorSets returned error %d.\n", res);
+        return -1;
+    }
+
+    VkDescriptorBufferInfo uniformBufferInfo[103];
+    VkWriteDescriptorSet writes[103];
+    for (int i = 0; i<103; i++) {
         uniformBufferInfo[i].buffer = uniformBuffer;
         uniformBufferInfo[i].offset = engine->modelBufferValsOffset*i;
         uniformBufferInfo[i].range = sizeof(float) * 16;
-
+    }
+    for (int i = 0; i<100; i++) {
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[i].pNext = NULL;
         writes[i].dstSet = engine->modelDescriptorSets[i];
@@ -1920,10 +1949,7 @@ int setupUniforms(struct engine* engine)
         writes[i].dstBinding = 0;
     }
 
-    uniformBufferInfo[100].buffer = uniformBuffer;
-    uniformBufferInfo[100].offset = engine->modelBufferValsOffset*100;
-    uniformBufferInfo[100].range = sizeof(float)*16;
-
+    //Scene data
     writes[100].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     writes[100].pNext = NULL;
     writes[100].dstSet = engine->sceneDescriptorSet;
@@ -1933,7 +1959,27 @@ int setupUniforms(struct engine* engine)
     writes[100].dstArrayElement = 0;
     writes[100].dstBinding = 0;
 
-    vkUpdateDescriptorSets(engine->vkDevice, 101, writes, 0, NULL);
+    //Identity model matrix
+    writes[101].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[101].pNext = NULL;
+    writes[101].dstSet = engine->identityModelDescriptorSet;
+    writes[101].descriptorCount = 1;
+    writes[101].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[101].pBufferInfo = &uniformBufferInfo[101];
+    writes[101].dstArrayElement = 0;
+    writes[101].dstBinding = 0;
+
+    //Identity scene matrix
+    writes[102].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[102].pNext = NULL;
+    writes[102].dstSet = engine->identitySceneDescriptorSet;
+    writes[102].descriptorCount = 1;
+    writes[102].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[102].pBufferInfo = &uniformBufferInfo[102];
+    writes[102].dstArrayElement = 0;
+    writes[102].dstBinding = 0;
+
+    vkUpdateDescriptorSets(engine->vkDevice, 103, writes, 0, NULL);
 
     LOGI ("Descriptor sets updated %d.\n", res);
     return 0;
@@ -2067,6 +2113,88 @@ void createSecondaryBuffers(struct engine* engine)
             }
         }
     }
+    for (int layer = 0; layer < 4; layer++) {
+        for (int i = 0; i < engine->swapchainImageCount; i++) {
+            int cmdBuffIndex = 3 + (4*engine->swapchainImageCount) + layer * 4 + i;
+            VkResult res;
+            VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
+            commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+            commandBufferInheritanceInfo.pNext = 0;
+#ifdef dontUseSubpasses
+            commandBufferInheritanceInfo.renderPass = engine->renderPass[layer*2+1];
+            commandBufferInheritanceInfo.subpass = 0;
+            LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
+#else
+            commandBufferInheritanceInfo.renderPass = engine->renderPass[2];
+            commandBufferInheritanceInfo.subpass = layer;
+#endif
+            commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
+            commandBufferInheritanceInfo.occlusionQueryEnable = 0;
+            commandBufferInheritanceInfo.queryFlags = 0;
+            commandBufferInheritanceInfo.pipelineStatistics = 0;
+
+            VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+            commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            commandBufferBeginInfo.pNext = NULL;
+            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
+                                           VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+            commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
+            res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                       &commandBufferBeginInfo);
+            if (res != VK_SUCCESS) {
+                printf("vkBeginCommandBuffer returned error.\n");
+                return;
+            }
+
+            vkCmdBindPipeline(engine->secondaryCommandBuffers[cmdBuffIndex],
+                              VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              engine->blendPipeline);
+
+            VkRect2D scissor;
+            if (engine->splitscreen)
+                scissor.extent.width = engine->width / 2;
+            else
+                scissor.extent.width = engine->width;
+            scissor.extent.height = engine->height;
+            if (engine->splitscreen)
+                scissor.offset.x = scissor.extent.width;
+            else
+                scissor.offset.x = 0;
+            scissor.offset.y = 0;
+
+            vkCmdSetScissor(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1, &scissor);
+
+            vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    engine->blendPipelineLayout, 1, 1,
+                                    &engine->identitySceneDescriptorSet, 0, NULL);
+            VkDeviceSize offsets[1] = {0};
+            vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1,
+                                   &engine->vertexBuffer,
+                                   offsets);
+
+            vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    engine->blendPipelineLayout, 0, 1,
+                                    &engine->identityModelDescriptorSet, 0, NULL);
+
+            vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
+//            for (int object = 0; object < 100; object++) {
+//                vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+//                                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+//                                        engine->blendPipelineLayout, 0, 1,
+//                                        &engine->modelDescriptorSets[object], 0, NULL);
+
+//                vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
+//            }
+
+            res = vkEndCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex]);
+            if (res != VK_SUCCESS) {
+                printf("vkBeginCommandBuffer returned error.\n");
+                return;
+            }
+        }
+    }
 }
 
 void updateUniforms(struct engine* engine)
@@ -2085,6 +2213,8 @@ void updateUniforms(struct engine* engine)
     //As the memory is still mapped we can write the result stright into uniformMappedMemory:
 //    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
     perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 100.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*100));
+    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*101));
+    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*102));
 //    for (int i=0; i<100; i++)
 //        memcpy((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*i), MVMatrix, sizeof(float)*16);
     engine->simulation->write(engine->uniformMappedMemory, engine->modelBufferValsOffset);
@@ -2218,8 +2348,8 @@ static void engine_draw_frame(struct engine* engine) {
         vkCmdNextSubpass(engine->renderCommandBuffer[i],
                          VK_SUBPASS_CONTENTS_INLINE);
 #endif
-//        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
-//                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
+        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
+                             &engine->secondaryCommandBuffers[cmdBuffIndex + engine->swapchainImageCount * 4]);
     }
 
 //    VkCommandBuffer buffers[40];
@@ -2343,7 +2473,7 @@ static void engine_term_display(struct engine* engine) {
 //    engine->surface = EGL_NO_SURFACE;
 }
 
-#ifdef ANDROID
+#ifdef __ANDROID__
 /**
  * Process the next input event.
  */
@@ -2524,12 +2654,20 @@ void android_main(struct android_app* state) {
 #endif
 //END_INCLUDE(all)
 
-#ifndef ANDROID
+#ifndef __ANDROID__
 int main()
 {
     struct engine engine;
     engine.width=800;
-    engine.height=600;
+    engine.height=600;    
+    engine.animating=1;
+    engine.vulkanSetupOK=false;
+    engine.frameRateClock=new btClock;
+    engine.frameRateClock->reset();
+    engine.simulation = new Simulation;
+    engine.simulation->step();
+    engine.splitscreen = true;
+    engine.rebuildCommadBuffersRequired = false;
 
     //Setup XCB Connection:
     const xcb_setup_t *setup;
@@ -2569,7 +2707,7 @@ int main()
     xcb_intern_atom_reply_t* delete_window_reply = xcb_intern_atom_reply(engine.xcbConnection, cookie2, 0);
 
     xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, (*reply).atom, 4, 32, 1, &(*delete_window_reply).atom);
-    char* windowTitle="Vulkan Example";
+    char* windowTitle="Vulkan depth peel demo";
     xcb_change_property(engine.xcbConnection, XCB_PROP_MODE_REPLACE, engine.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8, strlen(windowTitle), windowTitle);
 
     //This demo does not include the code necessary to handle resizing the framebuffers
@@ -2591,6 +2729,48 @@ int main()
     }
 
     engine_init_display(&engine);
+    bool done=false;
+    while (!(done==1)) {
+        while (1==1) {
+            e = xcb_poll_for_event(engine.xcbConnection);
+            if (!e) break;
+            printf("Event: ");
+            switch(e->response_type & ~0x80)
+            {
+            case XCB_EXPOSE:
+                break;
+            case XCB_EVENT_MASK_BUTTON_PRESS:
+                done=1;
+                break;
+            case XCB_KEY_PRESS:
+            {
+                xcb_keycode_t key = ((xcb_key_press_event_t*)e)->detail;
+                LOGI("Key pressed %d", key);
+                if (key == 9)
+                    done=1;
+                else if(key == 65)
+                {
+                    engine.splitscreen = !engine.splitscreen;
+                    engine.rebuildCommadBuffersRequired=true;
+                }
+            }
+                break;
+            default:
+                printf ("Unknown XCB Event %d\n", (e->response_type & ~0x80));
+            }
+            if ((e->response_type & ~0x80)==XCB_CLIENT_MESSAGE)
+            {
+                printf("XCB_CLIENT_MESSAGE");
+                if(((xcb_client_message_event_t*)e)->data.data32[0] == delete_window_reply->atom)
+                    done=1;
+            }
+            free(e);
+        }
+        if (done)
+            printf("done\n");
+        engine_draw_frame(&engine);
+        engine.simulation->step();
+    }
     return 0;
 }
 

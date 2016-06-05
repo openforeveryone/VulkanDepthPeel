@@ -39,5 +39,8 @@ void Simulation::step() {
 
 void Simulation::write(uint8_t *buffer, int offset) {
     for (int i=0; i<100; i++)
-        memcpy(buffer + offset*i, &transforms[i*16], sizeof(float)*16);
+    {
+        uint8_t *matrix = buffer + offset*i;
+        memcpy(matrix, &transforms[i*16], sizeof(float)*16);
+    }
 }
