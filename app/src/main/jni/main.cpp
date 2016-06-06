@@ -1805,7 +1805,7 @@ int setupUniforms(struct engine* engine)
     uniformBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     uniformBufferCreateInfo.pNext = NULL;
     uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniformBufferCreateInfo.size = engine->modelBufferValsOffset*101; //Enough to store 101 matricies.
+    uniformBufferCreateInfo.size = engine->modelBufferValsOffset*103; //Enough to store 103 matricies.
     uniformBufferCreateInfo.queueFamilyIndexCount = 0;
     uniformBufferCreateInfo.pQueueFamilyIndices = NULL;
     uniformBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
