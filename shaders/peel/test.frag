@@ -8,7 +8,7 @@ layout (location = 0) out vec4 outColor;
 
 void main() {
    vec4 depth = subpassLoad(subpass);
-   if (depth.r < 1 && gl_FragCoord.z-0.00001 <= depth.r)
+   if (gl_FragCoord.z-0.00001 <= depth.r)
     discard;
    outColor = color;
 }

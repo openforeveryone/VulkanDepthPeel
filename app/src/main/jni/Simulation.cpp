@@ -9,6 +9,7 @@
 
 Simulation::Simulation() {
     LOGI("Simulation()");
+    paused=false;
     for (int i = 0; i < 300; i++)
         colours[i] = (float) rand() / (float) (RAND_MAX);
     float identityMatrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
@@ -22,6 +23,8 @@ Simulation::Simulation() {
 }
 
 void Simulation::step() {
+    if (paused)
+        return;
     for(int i=0; i<100; i++)
     {
         if (transforms[i * 16 + 12] < -30 || transforms[i * 16 + 12] > 30 || transforms[i * 16 + 13] < -20 || transforms[i * 16 + 13] > 20)

@@ -17,6 +17,7 @@ public:
     float velocities[100*2];
     float transforms[100*16];
     float colours[100*3];
+    bool paused;
 };
 
 

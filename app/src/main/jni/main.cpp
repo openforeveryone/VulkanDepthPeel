@@ -2399,19 +2399,18 @@ void createSecondaryBuffers(struct engine* engine)
 void updateUniforms(struct engine* engine)
 {
     //Create the uniforms
-    float projectionMatrix[16];
+//    float projectionMatrix[16];
     float viewMatrix[16];
     float modelMatrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
     float MVMatrix[16];
-    float MVPMatrix[16];
+//    float MVPMatrix[16];
 
-    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 100.0f, projectionMatrix);
     translate_matrix(0,0,-50, viewMatrix);
     rotate_matrix(45+engine->frame, 0,1,0, modelMatrix);
     multiply_matrix(viewMatrix, modelMatrix, MVMatrix);
     //As the memory is still mapped we can write the result stright into uniformMappedMemory:
 //    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
-    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 100.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*100));
+    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 50.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*100));
     identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*101));
     identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*102));
 //    for (int i=0; i<100; i++)
@@ -2488,8 +2487,9 @@ static void engine_draw_frame(struct engine* engine) {
     }
 
     //Clear depth buffer 1 as, for convenence, it is used as an input before it is used as a depth buffer.
+    //Clearing it to 0.0f ensures that first layer peel tests will always pass.
     VkClearDepthStencilValue depthclearvalue;
-    depthclearvalue.depth=1.0f;
+    depthclearvalue.depth=0.0f;
     depthclearvalue.stencil = 0;
     VkImageSubresourceRange imageSubresourceRange;
     imageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -2556,7 +2556,7 @@ static void engine_draw_frame(struct engine* engine) {
 //                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
 //    }
 
-    for (int layer = 0; layer < 2; layer++) {
+    for (int layer = 0; layer < 4; layer++) {
         int cmdBuffIndex = 3 + layer * 4 + currentBuffer;
         //Peel
 #ifdef dontUseSubpasses
@@ -2887,7 +2887,7 @@ int main()
 {
     struct engine engine;
     engine.width=800;
-    engine.height=600;    
+    engine.height=600;
     engine.animating=1;
     engine.vulkanSetupOK=false;
     engine.frameRateClock=new btClock;
@@ -2992,6 +2992,8 @@ int main()
                     else
                         LOGI("Displaying only layer %d", engine.displayLayer);
                 }
+                else if (key == 33)
+                    engine.simulation->paused= !engine.simulation->paused;
                 else if(key == 65)
                 {
                     engine.splitscreen = !engine.splitscreen;
