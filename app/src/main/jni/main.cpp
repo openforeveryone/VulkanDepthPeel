@@ -600,7 +600,7 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("swapchainImageCount %d.\n", engine->swapchainImageCount);
 
     //Setup the depth buffer:
-    const VkFormat depth_format = VK_FORMAT_D16_UNORM;
+    const VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
 
     VkImageCreateInfo imageCreateInfo;
     VkFormatProperties props;
