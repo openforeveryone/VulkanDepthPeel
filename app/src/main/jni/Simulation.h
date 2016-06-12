@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#define MAX_BOXES 100
 
 class Simulation {
 public:
@@ -14,9 +15,9 @@ public:
     void step();
     void write(uint8_t *buffer, int offset);
 //    float positions[100*3];
-    float velocities[100*2];
-    float transforms[100*16];
-    float colours[100*3];
+    float velocities[MAX_BOXES*2];
+    float transforms[MAX_BOXES*16];
+    float colours[MAX_BOXES*3];
     bool paused;
 };
 

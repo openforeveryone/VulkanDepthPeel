@@ -15,6 +15,9 @@
  *
  */
 
+//#define dontUseSubpasses 1
+#define MAX_LAYERS 8
+
 //BEGIN_INCLUDE(all)
 #include <initializer_list>
 //#include <jni.h>
@@ -43,9 +46,6 @@
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_platform.h>
-
-//#define dontUseSubpasses 1
-#define MAX_LAYERS 8
 
 void createSecondaryBuffers(struct engine* engine);
 int setupUniforms(struct engine* engine);
@@ -1834,7 +1834,7 @@ int setupUniforms(struct engine* engine)
     //Create a descriptor pool
     VkDescriptorPoolSize typeCounts[2];
     typeCounts[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    typeCounts[0].descriptorCount = 103;
+    typeCounts[0].descriptorCount = MAX_BOXES+3;
     typeCounts[1].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
     typeCounts[1].descriptorCount = 3;
 
@@ -1842,7 +1842,7 @@ int setupUniforms(struct engine* engine)
     descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptorPoolInfo.flags = 0;
     descriptorPoolInfo.pNext = NULL;
-    descriptorPoolInfo.maxSets = 106;
+    descriptorPoolInfo.maxSets = MAX_BOXES+6;
     descriptorPoolInfo.poolSizeCount = 2;
     descriptorPoolInfo.pPoolSizes = typeCounts;
 
@@ -1863,7 +1863,7 @@ int setupUniforms(struct engine* engine)
     uniformBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     uniformBufferCreateInfo.pNext = NULL;
     uniformBufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    uniformBufferCreateInfo.size = engine->modelBufferValsOffset*103; //Enough to store 103 matricies.
+    uniformBufferCreateInfo.size = engine->modelBufferValsOffset*(MAX_BOXES+3); //Enough to store MAX_BOXES+3 matricies.
     uniformBufferCreateInfo.queueFamilyIndexCount = 0;
     uniformBufferCreateInfo.pQueueFamilyIndices = NULL;
     uniformBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -1973,15 +1973,15 @@ int setupUniforms(struct engine* engine)
         return -1;
     }
 
-    engine->modelDescriptorSets = new VkDescriptorSet[100];
-    VkDescriptorSetLayout sceneLayouts[100];
-    for (int i=0; i<100; i++)
+    engine->modelDescriptorSets = new VkDescriptorSet[MAX_BOXES];
+    VkDescriptorSetLayout sceneLayouts[MAX_BOXES];
+    for (int i=0; i<MAX_BOXES; i++)
         sceneLayouts[i]=engine->descriptorSetLayouts[1];
 
     descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptorSetAllocateInfo.pNext = NULL;
     descriptorSetAllocateInfo.descriptorPool = descriptorPool;
-    descriptorSetAllocateInfo.descriptorSetCount = 100;
+    descriptorSetAllocateInfo.descriptorSetCount = MAX_BOXES;
     descriptorSetAllocateInfo.pSetLayouts = sceneLayouts;
 
     res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, engine->modelDescriptorSets);
@@ -2037,14 +2037,14 @@ int setupUniforms(struct engine* engine)
     }
 
 
-    VkDescriptorBufferInfo uniformBufferInfo[103];
-    VkWriteDescriptorSet writes[106];
-    for (int i = 0; i<103; i++) {
+    VkDescriptorBufferInfo uniformBufferInfo[MAX_BOXES+3];
+    VkWriteDescriptorSet writes[MAX_BOXES+6];
+    for (int i = 0; i<MAX_BOXES+3; i++) {
         uniformBufferInfo[i].buffer = uniformBuffer;
         uniformBufferInfo[i].offset = engine->modelBufferValsOffset*i;
         uniformBufferInfo[i].range = sizeof(float) * 16;
     }
-    for (int i = 0; i<100; i++) {
+    for (int i = 0; i<MAX_BOXES; i++) {
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[i].pNext = NULL;
         writes[i].dstSet = engine->modelDescriptorSets[i];
@@ -2056,75 +2056,75 @@ int setupUniforms(struct engine* engine)
     }
 
     //Scene data
-    writes[100].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[100].pNext = NULL;
-    writes[100].dstSet = engine->sceneDescriptorSet;
-    writes[100].descriptorCount = 1;
-    writes[100].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[100].pBufferInfo = &uniformBufferInfo[100];
-    writes[100].dstArrayElement = 0;
-    writes[100].dstBinding = 0;
+    writes[MAX_BOXES].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES].pNext = NULL;
+    writes[MAX_BOXES].dstSet = engine->sceneDescriptorSet;
+    writes[MAX_BOXES].descriptorCount = 1;
+    writes[MAX_BOXES].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[MAX_BOXES].pBufferInfo = &uniformBufferInfo[MAX_BOXES];
+    writes[MAX_BOXES].dstArrayElement = 0;
+    writes[MAX_BOXES].dstBinding = 0;
 
     //Identity model matrix
-    writes[101].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[101].pNext = NULL;
-    writes[101].dstSet = engine->identityModelDescriptorSet;
-    writes[101].descriptorCount = 1;
-    writes[101].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[101].pBufferInfo = &uniformBufferInfo[101];
-    writes[101].dstArrayElement = 0;
-    writes[101].dstBinding = 0;
+    writes[MAX_BOXES+1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES+1].pNext = NULL;
+    writes[MAX_BOXES+1].dstSet = engine->identityModelDescriptorSet;
+    writes[MAX_BOXES+1].descriptorCount = 1;
+    writes[MAX_BOXES+1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[MAX_BOXES+1].pBufferInfo = &uniformBufferInfo[MAX_BOXES+1];
+    writes[MAX_BOXES+1].dstArrayElement = 0;
+    writes[MAX_BOXES+1].dstBinding = 0;
 
     //Identity scene matrix
-    writes[102].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[102].pNext = NULL;
-    writes[102].dstSet = engine->identitySceneDescriptorSet;
-    writes[102].descriptorCount = 1;
-    writes[102].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    writes[102].pBufferInfo = &uniformBufferInfo[102];
-    writes[102].dstArrayElement = 0;
-    writes[102].dstBinding = 0;
+    writes[MAX_BOXES+2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES+2].pNext = NULL;
+    writes[MAX_BOXES+2].dstSet = engine->identitySceneDescriptorSet;
+    writes[MAX_BOXES+2].descriptorCount = 1;
+    writes[MAX_BOXES+2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[MAX_BOXES+2].pBufferInfo = &uniformBufferInfo[MAX_BOXES+2];
+    writes[MAX_BOXES+2].dstArrayElement = 0;
+    writes[MAX_BOXES+2].dstBinding = 0;
 
     //The input attachment:
     VkDescriptorImageInfo uniformImageInfo;
     uniformImageInfo.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
     uniformImageInfo.imageView=engine->peelView;
     uniformImageInfo.sampler=NULL;
-    writes[103].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[103].pNext = NULL;
-    writes[103].dstSet = engine->colourInputAttachmentDescriptorSet;
-    writes[103].descriptorCount = 1;
-    writes[103].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    writes[103].pImageInfo=&uniformImageInfo;
-    writes[103].dstArrayElement = 0;
-    writes[103].dstBinding = 0;    
+    writes[MAX_BOXES+3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES+3].pNext = NULL;
+    writes[MAX_BOXES+3].dstSet = engine->colourInputAttachmentDescriptorSet;
+    writes[MAX_BOXES+3].descriptorCount = 1;
+    writes[MAX_BOXES+3].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    writes[MAX_BOXES+3].pImageInfo=&uniformImageInfo;
+    writes[MAX_BOXES+3].dstArrayElement = 0;
+    writes[MAX_BOXES+3].dstBinding = 0;
 
     VkDescriptorImageInfo depthuniformImageInfo[2];
     depthuniformImageInfo[0].imageLayout=VK_IMAGE_LAYOUT_GENERAL;
     depthuniformImageInfo[0].imageView=engine->depthView[0];
     depthuniformImageInfo[0].sampler=NULL;
-    writes[104].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[104].pNext = NULL;
-    writes[104].dstSet = engine->depthInputAttachmentDescriptorSets[0];
-    writes[104].descriptorCount = 1;
-    writes[104].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    writes[104].pImageInfo=&depthuniformImageInfo[0];
-    writes[104].dstArrayElement = 0;
-    writes[104].dstBinding = 0;
+    writes[MAX_BOXES+4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES+4].pNext = NULL;
+    writes[MAX_BOXES+4].dstSet = engine->depthInputAttachmentDescriptorSets[0];
+    writes[MAX_BOXES+4].descriptorCount = 1;
+    writes[MAX_BOXES+4].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    writes[MAX_BOXES+4].pImageInfo=&depthuniformImageInfo[0];
+    writes[MAX_BOXES+4].dstArrayElement = 0;
+    writes[MAX_BOXES+4].dstBinding = 0;
 
     depthuniformImageInfo[1].imageLayout=VK_IMAGE_LAYOUT_GENERAL;
     depthuniformImageInfo[1].imageView=engine->depthView[1];
     depthuniformImageInfo[1].sampler=NULL;
-    writes[105].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[105].pNext = NULL;
-    writes[105].dstSet = engine->depthInputAttachmentDescriptorSets[1];
-    writes[105].descriptorCount = 1;
-    writes[105].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-    writes[105].pImageInfo=&depthuniformImageInfo[1];
-    writes[105].dstArrayElement = 0;
-    writes[105].dstBinding = 0;
+    writes[MAX_BOXES+5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[MAX_BOXES+5].pNext = NULL;
+    writes[MAX_BOXES+5].dstSet = engine->depthInputAttachmentDescriptorSets[1];
+    writes[MAX_BOXES+5].descriptorCount = 1;
+    writes[MAX_BOXES+5].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+    writes[MAX_BOXES+5].pImageInfo=&depthuniformImageInfo[1];
+    writes[MAX_BOXES+5].dstArrayElement = 0;
+    writes[MAX_BOXES+5].dstBinding = 0;
 
-    vkUpdateDescriptorSets(engine->vkDevice, 106, writes, 0, NULL);
+    vkUpdateDescriptorSets(engine->vkDevice, MAX_BOXES+6, writes, 0, NULL);
 
     LOGI ("Descriptor sets updated %d.\n", res);
     return 0;
@@ -2170,7 +2170,7 @@ void createSecondaryBuffers(struct engine* engine)
         VkDeviceSize offsets[1] = {0};
         vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[i], 0, 1, &engine->vertexBuffer,
                                offsets);
-        for (int object = 0; object < 100; object++) {
+        for (int object = 0; object < MAX_BOXES; object++) {
             vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     engine->pipelineLayout, 0, 1,
@@ -2274,7 +2274,7 @@ void createSecondaryBuffers(struct engine* engine)
                                     engine->blendPeelPipelineLayout, 2, 1,
                                     &engine->depthInputAttachmentDescriptorSets[!(layer%2)], 0, NULL);
 
-            for (int object = 0; object < 100; object++) {
+            for (int object = 0; object < MAX_BOXES; object++) {
                 vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
                                         VK_PIPELINE_BIND_POINT_GRAPHICS,
                                         engine->blendPeelPipelineLayout, 0, 1,
@@ -2381,7 +2381,7 @@ void createSecondaryBuffers(struct engine* engine)
 
 
             vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
-//            for (int object = 0; object < 100; object++) {
+//            for (int object = 0; object < MAX_BOXES; object++) {
 //                vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
 //                                        VK_PIPELINE_BIND_POINT_GRAPHICS,
 //                                        engine->blendPipelineLayout, 0, 1,
@@ -2413,11 +2413,9 @@ void updateUniforms(struct engine* engine)
     multiply_matrix(viewMatrix, modelMatrix, MVMatrix);
     //As the memory is still mapped we can write the result stright into uniformMappedMemory:
 //    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
-    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 50.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*100));
-    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*101));
-    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*102));
-//    for (int i=0; i<100; i++)
-//        memcpy((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*i), MVMatrix, sizeof(float)*16);
+    perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 50.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*MAX_BOXES));
+    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*(MAX_BOXES+1)));
+    identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*(MAX_BOXES+2)));
     engine->simulation->write(engine->uniformMappedMemory, engine->modelBufferValsOffset);
 }
 

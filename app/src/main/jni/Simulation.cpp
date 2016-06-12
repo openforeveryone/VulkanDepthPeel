@@ -10,12 +10,12 @@
 Simulation::Simulation() {
     LOGI("Simulation()");
     paused=false;
-    for (int i = 0; i < 300; i++)
+    for (int i = 0; i < MAX_BOXES*3; i++)
         colours[i] = (float) rand() / (float) (RAND_MAX);
     float identityMatrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-    for(int i=0; i<100; i++)
+    for(int i=0; i<MAX_BOXES; i++)
         memcpy(transforms+(i*16), identityMatrix, sizeof(float)*16);
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < MAX_BOXES; i++) {
         transforms[i * 16 + 12] = 200;
         transforms[i * 16 + 13] = 200;
         transforms[i * 16 + 14] = (float)rand()/(float)(RAND_MAX) * 20.0f - 40.0f;
@@ -25,7 +25,7 @@ Simulation::Simulation() {
 void Simulation::step() {
     if (paused)
         return;
-    for(int i=0; i<100; i++)
+    for(int i=0; i<MAX_BOXES; i++)
     {
         if (transforms[i * 16 + 12] < -30 || transforms[i * 16 + 12] > 30 || transforms[i * 16 + 13] < -20 || transforms[i * 16 + 13] > 20)
         {
@@ -41,7 +41,7 @@ void Simulation::step() {
 }
 
 void Simulation::write(uint8_t *buffer, int offset) {
-    for (int i=0; i<100; i++)
+    for (int i=0; i<MAX_BOXES; i++)
     {
         uint8_t *matrix = buffer + offset*i;
         memcpy(matrix, &transforms[i*16], sizeof(float)*16);
