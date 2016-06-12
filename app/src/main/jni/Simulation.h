@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define MAX_BOXES 100
+#define MAX_BOXES 500
 
 class Simulation {
 public:

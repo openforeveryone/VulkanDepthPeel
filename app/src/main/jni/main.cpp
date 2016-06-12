@@ -127,6 +127,8 @@ struct engine {
     VkVertexInputAttributeDescription vertexInputAttributeDescription[2];
     VkShaderModule shdermodules[6];
     int displayLayer;
+    int layerCount;
+    int boxCount;
 
     const int NUM_SAMPLES = 1;
 };
@@ -2170,7 +2172,7 @@ void createSecondaryBuffers(struct engine* engine)
         VkDeviceSize offsets[1] = {0};
         vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[i], 0, 1, &engine->vertexBuffer,
                                offsets);
-        for (int object = 0; object < MAX_BOXES; object++) {
+        for (int object = 0; object < engine->boxCount; object++) {
             vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[i],
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     engine->pipelineLayout, 0, 1,
@@ -2274,7 +2276,7 @@ void createSecondaryBuffers(struct engine* engine)
                                     engine->blendPeelPipelineLayout, 2, 1,
                                     &engine->depthInputAttachmentDescriptorSets[!(layer%2)], 0, NULL);
 
-            for (int object = 0; object < MAX_BOXES; object++) {
+            for (int object = 0; object < engine->boxCount; object++) {
                 vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
                                         VK_PIPELINE_BIND_POINT_GRAPHICS,
                                         engine->blendPeelPipelineLayout, 0, 1,
@@ -2548,7 +2550,7 @@ static void engine_draw_frame(struct engine* engine) {
                              &engine->secondaryCommandBuffers[currentBuffer]);
     }
 
-    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+    for (int layer = 0; layer < engine->layerCount; layer++) {
         int cmdBuffIndex = engine->swapchainImageCount + layer * engine->swapchainImageCount*2 + currentBuffer;
         //Peel
 #ifdef dontUseSubpasses
@@ -2881,6 +2883,8 @@ int main()
     engine.splitscreen = true;
     engine.rebuildCommadBuffersRequired = false;
     engine.displayLayer=-1;
+    engine.layerCount=4;
+    engine.boxCount=100;
 
     //Setup XCB Connection:
     const xcb_setup_t *setup;
@@ -2959,14 +2963,14 @@ int main()
             case XCB_KEY_PRESS:
             {
                 xcb_keycode_t key = ((xcb_key_press_event_t*)e)->detail;
-                LOGI("Key pressed %d", key);
+//                LOGI("Key pressed %d", key);
                 if (key == 9)
                     done=1;
                 if (key == 25 || key == 39)
                 {
                     if (key == 25)
                         engine.displayLayer++;
-                    else if (key == 39)
+                    else
                         engine.displayLayer--;
                     if (engine.displayLayer<0)
                     {
@@ -2975,6 +2979,31 @@ int main()
                     }
                     else
                         LOGI("Displaying only layer %d", engine.displayLayer);
+                }                
+                else if (key == 111 || key == 116)
+                {
+                    if (key == 111)
+                        engine.layerCount++;
+                    else
+                        engine.layerCount--;
+                    if (engine.layerCount<1)
+                        engine.layerCount=1;
+                    else if (engine.layerCount>MAX_LAYERS)
+                        engine.layerCount=MAX_LAYERS;
+                    LOGI("Using %d layers", engine.layerCount);
+                }
+                else if (key == 113 || key == 114)
+                {
+                    if (key == 114)
+                        engine.boxCount+=50;
+                    else
+                        engine.boxCount-=50;
+                    if (engine.boxCount<50)
+                        engine.boxCount=50;
+                    else if (engine.boxCount>MAX_BOXES)
+                        engine.boxCount=MAX_BOXES;
+                    LOGI("Drawing %d boxes", engine.boxCount);
+                    engine.rebuildCommadBuffersRequired=true;
                 }
                 else if (key == 33)
                     engine.simulation->paused= !engine.simulation->paused;
