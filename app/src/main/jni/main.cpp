@@ -118,6 +118,7 @@ struct engine {
     struct saved_state state;
     VkPipeline traditionalBlendPipeline;
     VkPipeline peelPipeline;
+    VkPipeline firstPeelPipeline;
     VkPipeline blendPipeline;
     btClock *frameRateClock;
     Simulation *simulation;
@@ -890,7 +891,7 @@ static int engine_init_display(struct engine* engine) {
     attachments[1].format = depth_format;
     attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
     attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[1].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -898,7 +899,7 @@ static int engine_init_display(struct engine* engine) {
     attachments[1].flags = 0;
     attachments[2].format = format;
     attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -907,8 +908,8 @@ static int engine_init_display(struct engine* engine) {
     attachments[2].flags = 0;
     attachments[3].format = depth_format;
     attachments[3].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[3].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[3].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -955,7 +956,7 @@ static int engine_init_display(struct engine* engine) {
         uint32_t *PreserveAttachments = new uint32_t[2];  //This will leak
         subpasses[i * 2 + 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 1].flags = 0;
-        subpasses[i * 2 + 1].inputAttachmentCount = 1;
+        subpasses[i * 2 + 1].inputAttachmentCount = (i==0) ? 0 : 1;
         subpasses[i * 2 + 1].pInputAttachments = &depth_reference[!(i%2)];
         subpasses[i * 2 + 1].colorAttachmentCount = 1;
         subpasses[i * 2 + 1].pColorAttachments = &peelcolor_reference;
@@ -1376,7 +1377,7 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     rs.pNext = NULL;
     rs.flags = 0;
     rs.polygonMode = VK_POLYGON_MODE_FILL;
-    rs.cullMode = VK_CULL_MODE_BACK_BIT;
+    rs.cullMode = VK_CULL_MODE_NONE;
     rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rs.depthClampEnable = VK_TRUE;
     rs.rasterizerDiscardEnable = VK_FALSE;
@@ -1544,7 +1545,7 @@ int setupPeelPipeline(struct engine* engine) {
     rs.pNext = NULL;
     rs.flags = 0;
     rs.polygonMode = VK_POLYGON_MODE_FILL;
-    rs.cullMode = VK_CULL_MODE_BACK_BIT;
+    rs.cullMode = VK_CULL_MODE_NONE;
     rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rs.depthClampEnable = VK_TRUE;
     rs.rasterizerDiscardEnable = VK_FALSE;
@@ -1613,21 +1614,37 @@ int setupPeelPipeline(struct engine* engine) {
     ms.alphaToOneEnable = VK_FALSE;
     ms.minSampleShading = 0.0;
 
-    VkPipelineShaderStageCreateInfo shaderStages[2];
-    shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shaderStages[0].pNext = NULL;
-    shaderStages[0].pSpecializationInfo = NULL;
-    shaderStages[0].flags = 0;
-    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-    shaderStages[0].pName = "main";
-    shaderStages[0].module = engine->shdermodules[2];
-    shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shaderStages[1].pNext = NULL;
-    shaderStages[1].pSpecializationInfo = NULL;
-    shaderStages[1].flags = 0;
-    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    shaderStages[1].pName = "main";
-    shaderStages[1].module = engine->shdermodules[3];
+    VkPipelineShaderStageCreateInfo peelShaderStages[2];
+    peelShaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    peelShaderStages[0].pNext = NULL;
+    peelShaderStages[0].pSpecializationInfo = NULL;
+    peelShaderStages[0].flags = 0;
+    peelShaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    peelShaderStages[0].pName = "main";
+    peelShaderStages[0].module = engine->shdermodules[2];
+    peelShaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    peelShaderStages[1].pNext = NULL;
+    peelShaderStages[1].pSpecializationInfo = NULL;
+    peelShaderStages[1].flags = 0;
+    peelShaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    peelShaderStages[1].pName = "main";
+    peelShaderStages[1].module = engine->shdermodules[3];
+
+    VkPipelineShaderStageCreateInfo firstPeelShaderStages[2];
+    firstPeelShaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    firstPeelShaderStages[0].pNext = NULL;
+    firstPeelShaderStages[0].pSpecializationInfo = NULL;
+    firstPeelShaderStages[0].flags = 0;
+    firstPeelShaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    firstPeelShaderStages[0].pName = "main";
+    firstPeelShaderStages[0].module = engine->shdermodules[2];
+    firstPeelShaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    firstPeelShaderStages[1].pNext = NULL;
+    firstPeelShaderStages[1].pSpecializationInfo = NULL;
+    firstPeelShaderStages[1].flags = 0;
+    firstPeelShaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    firstPeelShaderStages[1].pName = "main";
+    firstPeelShaderStages[1].module = engine->shdermodules[1];
 
     VkGraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1647,7 +1664,7 @@ int setupPeelPipeline(struct engine* engine) {
         pipelineInfo.pDynamicState=NULL;
     pipelineInfo.pViewportState = &vp;
     pipelineInfo.pDepthStencilState = &ds;
-    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pStages = peelShaderStages;
     pipelineInfo.stageCount = 2;
     pipelineInfo.renderPass = engine->renderPass[0];
     pipelineInfo.subpass = 0;
@@ -1659,6 +1676,17 @@ int setupPeelPipeline(struct engine* engine) {
         LOGE("vkCreateGraphicsPipelines returned error %d.\n", res);
         return -1;
     }
+
+    pipelineInfo.layout = engine->pipelineLayout;
+    pipelineInfo.pStages = firstPeelShaderStages;
+
+    res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL,
+                                    &engine->firstPeelPipeline);
+    if (res != VK_SUCCESS) {
+        LOGE("vkCreateGraphicsPipelines returned error %d.\n", res);
+        return -1;
+    }
+
     return 0;
 }
 
@@ -2246,7 +2274,7 @@ void createSecondaryBuffers(struct engine* engine)
 
             vkCmdBindPipeline(engine->secondaryCommandBuffers[cmdBuffIndex],
                               VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              engine->peelPipeline);
+                              (layer==0) ? engine->firstPeelPipeline : engine->peelPipeline);
 
             VkRect2D scissor;
             if (engine->splitscreen)
@@ -2264,22 +2292,25 @@ void createSecondaryBuffers(struct engine* engine)
 
             vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    engine->blendPeelPipelineLayout, 1, 1,
+                                    (layer==0) ? engine->pipelineLayout : engine->blendPeelPipelineLayout, 1, 1,
                                     &engine->sceneDescriptorSet, 0, NULL);
             VkDeviceSize offsets[1] = {0};
             vkCmdBindVertexBuffers(engine->secondaryCommandBuffers[cmdBuffIndex], 0, 1,
                                    &engine->vertexBuffer,
                                    offsets);
 
-            vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
-                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    engine->blendPeelPipelineLayout, 2, 1,
-                                    &engine->depthInputAttachmentDescriptorSets[!(layer%2)], 0, NULL);
+            if (layer>0)
+            {
+                vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
+                                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        engine->blendPeelPipelineLayout, 2, 1,
+                                        &engine->depthInputAttachmentDescriptorSets[!(layer%2)], 0, NULL);
+            }
 
             for (int object = 0; object < engine->boxCount; object++) {
                 vkCmdBindDescriptorSets(engine->secondaryCommandBuffers[cmdBuffIndex],
                                         VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        engine->blendPeelPipelineLayout, 0, 1,
+                                        (layer==0) ? engine->pipelineLayout : engine->blendPeelPipelineLayout, 0, 1,
                                         &engine->modelDescriptorSets[object], 0, NULL);
 
                 vkCmdDraw(engine->secondaryCommandBuffers[cmdBuffIndex], 12 * 3, 1, 0, 0);
@@ -2487,40 +2518,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    //Clear depth buffer 1 as, for convenence, it is used as an input before it is used as a depth buffer.
-    //Clearing it to 0.0f ensures that first layer peel tests will always pass.
-    VkClearDepthStencilValue depthclearvalue;
-    depthclearvalue.depth=0.0f;
-    depthclearvalue.stencil = 0;
-    VkImageSubresourceRange imageSubresourceRange;
-    imageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    imageSubresourceRange.baseMipLevel = 0;
-    imageSubresourceRange.levelCount = 1;
-    imageSubresourceRange.baseArrayLayer = 0;
-    imageSubresourceRange.layerCount = 1;
-    vkCmdClearDepthStencilImage(engine->renderCommandBuffer[0], engine->depthImage[1], VK_IMAGE_LAYOUT_GENERAL, &depthclearvalue, 1, &imageSubresourceRange);
-
     VkImageMemoryBarrier imageMemoryBarrier;
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageMemoryBarrier.pNext = NULL;
-    imageMemoryBarrier.image = engine->depthImage[1];
-    imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
-    imageMemoryBarrier.subresourceRange.levelCount = 1;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
-    imageMemoryBarrier.subresourceRange.layerCount = 1;
-    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    vkCmdPipelineBarrier(engine->renderCommandBuffer[0], srcStageFlags, destStageFlags, 0,
-                         0, NULL, 0, NULL, 1, &imageMemoryBarrier);
-
-//    VkImageMemoryBarrier imageMemoryBarrier;
     imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -2535,8 +2533,8 @@ static void engine_draw_frame(struct engine* engine) {
     imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     imageMemoryBarrier.srcAccessMask = 0;
     imageMemoryBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-     srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-     destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkPipelineStageFlags srcStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkPipelineStageFlags destStageFlags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     vkCmdPipelineBarrier(engine->renderCommandBuffer[0], srcStageFlags, destStageFlags, 0,
                          0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 
@@ -2790,7 +2788,7 @@ void android_main(struct android_app* state) {
     engine.frameRateClock->reset();
     engine.simulation = new Simulation;
     engine.simulation->step();
-    engine.splitscreen = true;
+    engine.splitscreen = false;
     engine.rebuildCommadBuffersRequired = false;
 
 
@@ -2880,7 +2878,7 @@ int main()
     engine.frameRateClock->reset();
     engine.simulation = new Simulation;
     engine.simulation->step();
-    engine.splitscreen = true;
+    engine.splitscreen = false;
     engine.rebuildCommadBuffersRequired = false;
     engine.displayLayer=-1;
     engine.layerCount=4;
