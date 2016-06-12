@@ -45,6 +45,7 @@
 #include <vulkan/vk_platform.h>
 
 //#define dontUseSubpasses 1
+#define MAX_LAYERS 8
 
 void createSecondaryBuffers(struct engine* engine);
 int setupUniforms(struct engine* engine);
@@ -862,11 +863,11 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
-    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*(8+2)];
+    engine->secondaryCommandBuffers=new VkCommandBuffer[engine->swapchainImageCount*(MAX_LAYERS*2+1)];
     commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(8+2);
+    commandBufferAllocateInfo.commandBufferCount = engine->swapchainImageCount*(MAX_LAYERS*2+1);
 
-    LOGI ("Creating %d secondary command buffers.\n", engine->swapchainImageCount*(8+2));
+    LOGI ("Creating %d secondary command buffers.\n", engine->swapchainImageCount*(MAX_LAYERS*2+1));
     res = vkAllocateCommandBuffers(engine->vkDevice, &commandBufferAllocateInfo, engine->secondaryCommandBuffers);
     if (res != VK_SUCCESS) {
         LOGE ("vkAllocateCommandBuffers returned error.\n");
@@ -930,9 +931,10 @@ static int engine_init_display(struct engine* engine) {
     uint32_t depth_attachment[2] = {1, 3};
     uint32_t peel_attachment = 2;
 
-    uint subpassDependencyCount=45;
+    uint subpassCount = MAX_LAYERS*2+1;
+    uint subpassDependencyCount=(subpassCount*(subpassCount+1))/2;
     VkSubpassDependency subpassDependencies[subpassDependencyCount];
-    VkSubpassDescription subpasses[9];
+    VkSubpassDescription subpasses[subpassCount];
     subpasses[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpasses[0].flags = 0;
     subpasses[0].inputAttachmentCount = 0;
@@ -945,7 +947,7 @@ static int engine_init_display(struct engine* engine) {
     uint32_t PreserveAttachments[2] = {peel_attachment, depth_attachment[1]};
     subpasses[0].pPreserveAttachments = PreserveAttachments;
 
-    for (int i =0; i<4; i++)
+    for (int i =0; i<MAX_LAYERS; i++)
     {        
 
         uint32_t *PreserveAttachments = new uint32_t[2];  //This will leak
@@ -980,13 +982,13 @@ static int engine_init_display(struct engine* engine) {
 
     //For simplisity every subpass will depend on all subpasses before it in the same way:
     int subpassDependencyIndex=0;
-    for (int subpass=1; subpass<10; subpass++)
+    for (int subpass=1; subpass<subpassCount+1; subpass++)
     {
         for (int dependantSubpass=0; dependantSubpass<subpass; dependantSubpass++)
         {
 //            LOGI("Creating subpassDependency %d srcSubpass=%d dstSubpass=%d", subpassDependencyIndex, dependantSubpass, subpass);
             subpassDependencies[subpassDependencyIndex].srcSubpass = dependantSubpass;
-            subpassDependencies[subpassDependencyIndex].dstSubpass = (subpass<9) ? subpass : VK_SUBPASS_EXTERNAL;
+            subpassDependencies[subpassDependencyIndex].dstSubpass = (subpass<subpassCount) ? subpass : VK_SUBPASS_EXTERNAL;
             subpassDependencies[subpassDependencyIndex].srcStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
             subpassDependencies[subpassDependencyIndex].dstStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
             subpassDependencies[subpassDependencyIndex].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
@@ -996,14 +998,14 @@ static int engine_init_display(struct engine* engine) {
         }
     }
 
-    VkRenderPassCreateInfo rp_info[9];
+    VkRenderPassCreateInfo rp_info[subpassCount];
 #ifndef dontUseSubpasses
     rp_info[0].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     rp_info[0].pNext = NULL;
     rp_info[0].flags=0;
     rp_info[0].attachmentCount = 4;
     rp_info[0].pAttachments = attachments;
-    rp_info[0].subpassCount = 9;
+    rp_info[0].subpassCount = subpassCount;
     rp_info[0].pSubpasses = subpasses;
     rp_info[0].dependencyCount = subpassDependencyCount;
     rp_info[0].pDependencies = subpassDependencies;
@@ -2184,9 +2186,9 @@ void createSecondaryBuffers(struct engine* engine)
         }
     }
     LOGI("Creating peel stage buffers");
-    for (int layer = 0; layer < 4; layer++) {
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
         for (int i = 0; i < engine->swapchainImageCount; i++) {
-            int cmdBuffIndex = 3 + layer * 4 + i;
+            int cmdBuffIndex = engine->swapchainImageCount + layer * engine->swapchainImageCount * 2 + i;
             VkResult res;
             VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
             commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -2304,9 +2306,9 @@ void createSecondaryBuffers(struct engine* engine)
         }
     }
     LOGI("Creating blend stage buffers");
-    for (int layer = 0; layer < 4; layer++) {
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
         for (int i = 0; i < engine->swapchainImageCount; i++) {
-            int cmdBuffIndex = 3 + (4*engine->swapchainImageCount) + layer * 4 + i;
+            int cmdBuffIndex = engine->swapchainImageCount + engine->swapchainImageCount * layer * 2 + i + engine->swapchainImageCount;
             VkResult res;
             VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
             commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
@@ -2459,7 +2461,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    //LOGI("Using buffer %d", currentBuffer);
+//    LOGI("Using buffer %d", currentBuffer);
 
     //Now record the primary command buffer:
     VkRenderPassBeginInfo renderPassBeginInfo;
@@ -2547,16 +2549,9 @@ static void engine_draw_frame(struct engine* engine) {
         vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                              &engine->secondaryCommandBuffers[currentBuffer]);
     }
-//    vkCmdNextSubpass(engine->renderCommandBuffer[i], VK_SUBPASS_CONTENTS_INLINE);
-//    for (int layer = 0; layer < 4; layer++) {
-//        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
-//                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
-//        vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1,
-//                             &engine->secondaryCommandBuffers[currentBuffer + 3]);
-//    }
 
-    for (int layer = 0; layer < 4; layer++) {
-        int cmdBuffIndex = 3 + layer * 4 + currentBuffer;
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+        int cmdBuffIndex = engine->swapchainImageCount + layer * engine->swapchainImageCount*2 + currentBuffer;
         //Peel
 #ifdef dontUseSubpasses
         vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
@@ -2567,7 +2562,7 @@ static void engine_draw_frame(struct engine* engine) {
         vkCmdNextSubpass(engine->renderCommandBuffer[0],
                          VK_SUBPASS_CONTENTS_INLINE);
 #endif
-        //LOGI("Peel: Executing secondaryCommandBuffer %d", cmdBuffIndex);
+//        LOGI("Peel: Executing secondaryCommandBuffer %d", cmdBuffIndex);
         vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                            &engine->secondaryCommandBuffers[cmdBuffIndex]);
         //Blend
@@ -2582,19 +2577,11 @@ static void engine_draw_frame(struct engine* engine) {
 #endif
         if (engine->displayLayer < 0 || layer==engine->displayLayer)
         {
-        //LOGI("Blend: Executing secondaryCommandBuffer %d", cmdBuffIndex + engine->swapchainImageCount * 4);
+//        LOGI("Blend: Executing secondaryCommandBuffer %d", cmdBuffIndex + engine->swapchainImageCount);
         vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
-                             &engine->secondaryCommandBuffers[cmdBuffIndex + engine->swapchainImageCount * 4]);
+                             &engine->secondaryCommandBuffers[cmdBuffIndex + engine->swapchainImageCount]);
         }
     }
-
-//    VkCommandBuffer buffers[40];
-//    for (int i = 0; i< 8; i++)
-//    {
-//        buffers[i] = engine->secondaryCommandBuffers[currentBuffer+3];
-//    }
-//    vkCmdExecuteCommands(engine->renderCommandBuffer[i], 1, buffers);
-
 
     vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
 
