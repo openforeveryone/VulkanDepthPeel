@@ -327,6 +327,7 @@ static int engine_init_display(struct engine* engine) {
 
     VkDeviceQueueCreateInfo deviceQueueCreateInfo;
     deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    deviceQueueCreateInfo.flags = 0;
     deviceQueueCreateInfo.pNext = NULL;
     deviceQueueCreateInfo.queueCount = 1;
     float queuePriorities[1] = {1.0};
@@ -2209,7 +2210,7 @@ void createSecondaryBuffers(struct engine* engine)
             commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
                                            VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
             commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;            
-            LOGI("Creating Secondary Buffer %d using subpass %d (layer %d, swapchainImage %d)", cmdBuffIndex, layer*2+1, layer, i);
+            LOGI("Creating Secondary Buffer %d using subpass %d (layer %d, swapchainImage %d)", cmdBuffIndex, commandBufferInheritanceInfo.subpass, layer, i);
             res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
                                        &commandBufferBeginInfo);
             if (res != VK_SUCCESS) {
@@ -2429,7 +2430,7 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    VkClearValue clearValues[4];
+    VkClearValue clearValues[3];
     clearValues[0].color.float32[0] = 0.0f;
     clearValues[0].color.float32[1] = 0.0f;
     clearValues[0].color.float32[2] = 0.0f;
@@ -2440,8 +2441,6 @@ static void engine_draw_frame(struct engine* engine) {
     clearValues[2].color.float32[1] = 0.0f;
     clearValues[2].color.float32[2] = 0.0f;
     clearValues[2].color.float32[3] = 0.0f;
-    clearValues[3].depthStencil.depth = 1.0f;
-    clearValues[3].depthStencil.stencil = 0;
 
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
