@@ -403,6 +403,13 @@ static int engine_init_display(struct engine* engine) {
     }
     LOGI("vkCreateDevice successful");
 
+#ifdef __ANDROID__
+    LOGI("Restoring working directory");
+    chdir(oldcwd);
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+        LOGI("Current working dir: %s\n", cwd);
+#endif
 
     //Setup the swapchain
     uint32_t formatCount;
@@ -606,6 +613,7 @@ static int engine_init_display(struct engine* engine) {
 
     //Setup the depth buffer:
     const VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
+//    const VkFormat depth_format = VK_FORMAT_D16_UNORM;
 
     VkImageCreateInfo imageCreateInfo;
     VkFormatProperties props;
@@ -935,7 +943,7 @@ static int engine_init_display(struct engine* engine) {
     uint32_t peel_attachment = 2;
 
     uint subpassCount = MAX_LAYERS*2+1;
-    uint subpassDependencyCount=(subpassCount*(subpassCount+1))/2;
+    uint subpassDependencyCount=(subpassCount*(subpassCount-1))/2;
     VkSubpassDependency subpassDependencies[subpassDependencyCount];
     VkSubpassDescription subpasses[subpassCount];
     subpasses[0].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -985,13 +993,14 @@ static int engine_init_display(struct engine* engine) {
 
     //For simplisity every subpass will depend on all subpasses before it in the same way:
     int subpassDependencyIndex=0;
-    for (int subpass=1; subpass<subpassCount+1; subpass++)
+    for (int subpass=1; subpass<subpassCount; subpass++)
     {
         for (int dependantSubpass=0; dependantSubpass<subpass; dependantSubpass++)
         {
 //            LOGI("Creating subpassDependency %d srcSubpass=%d dstSubpass=%d", subpassDependencyIndex, dependantSubpass, subpass);
             subpassDependencies[subpassDependencyIndex].srcSubpass = dependantSubpass;
-            subpassDependencies[subpassDependencyIndex].dstSubpass = (subpass<subpassCount) ? subpass : VK_SUBPASS_EXTERNAL;
+            subpassDependencies[subpassDependencyIndex].dstSubpass = subpass;
+//            subpassDependencies[subpassDependencyIndex].dstSubpass = (subpass<subpassCount) ? subpass : VK_SUBPASS_EXTERNAL;
             subpassDependencies[subpassDependencyIndex].srcStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
             subpassDependencies[subpassDependencyIndex].dstStageMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
             subpassDependencies[subpassDependencyIndex].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
@@ -1000,7 +1009,9 @@ static int engine_init_display(struct engine* engine) {
             subpassDependencyIndex++;
         }
     }
+    assert(subpassDependencyIndex==subpassDependencyCount);
 
+    LOGI("Creating renderpass %d subpasses %d subpassDependencies", subpassCount, subpassDependencyCount);
     VkRenderPassCreateInfo rp_info[subpassCount];
 #ifndef dontUseSubpasses
     rp_info[0].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -1037,30 +1048,15 @@ static int engine_init_display(struct engine* engine) {
     }
 #endif
 
-
-//    rp_info[1].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-//    rp_info[1].pNext = NULL;
-//    rp_info[1].attachmentCount = 2;
-//    rp_info[1].pAttachments = &attachments[2];
-//    rp_info[1].subpassCount = 1;
-//    rp_info[1].pSubpasses = &subpass;
-//    rp_info[1].dependencyCount = 0;
-//    rp_info[1].pDependencies = NULL;
-
-
-
-//    res = vkCreateRenderPass(engine->vkDevice, &rp_info[1], NULL, &engine->renderPass[1]);
-//    if (res != VK_SUCCESS) {
-//        LOGE ("vkCreateRenderPass returned error. %d\n", res);
-//        return -1;
-//    }
-
     LOGI("Renderpass created");
+
     vkGetPhysicalDeviceProperties(engine->physicalDevice, &engine->deviceProperties);
     if (res != VK_SUCCESS) {
         printf ("vkGetPhysicalDeviceProperties returned error %d.\n", res);
         return -1;
     }
+
+    LOGI("vkGetPhysicalDeviceProperties");
 
     setupUniforms(engine);
 
@@ -1312,14 +1308,6 @@ static int engine_init_display(struct engine* engine) {
 
     createSecondaryBuffers(engine);
 
-#ifdef __ANDROID__
-    LOGI("Restoring working directory");
-    chdir(oldcwd);
-
-    if (getcwd(cwd, sizeof(cwd)) != NULL)
-        LOGI("Current working dir: %s\n", cwd);
-#endif
-
     engine->vulkanSetupOK=true;
     LOGI ("Vulkan setup complete");
 
@@ -1471,7 +1459,7 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     VkGraphicsPipelineCreateInfo pipelineInfo;
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.pNext = NULL;
-    pipelineInfo.layout = engine->blendPeelPipelineLayout;
+    pipelineInfo.layout = engine->pipelineLayout;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = 0;
     pipelineInfo.flags = 0;
@@ -1667,8 +1655,9 @@ int setupPeelPipeline(struct engine* engine) {
     pipelineInfo.pStages = peelShaderStages;
     pipelineInfo.stageCount = 2;
     pipelineInfo.renderPass = engine->renderPass[0];
-    pipelineInfo.subpass = 0;
+    pipelineInfo.subpass = 3;
 
+    LOGI("Creating peel pipeline");
     VkResult res;
     res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL,
                                     &engine->peelPipeline);
@@ -1677,8 +1666,10 @@ int setupPeelPipeline(struct engine* engine) {
         return -1;
     }
 
+    LOGI("Creating up first peel pipeline");
     pipelineInfo.layout = engine->pipelineLayout;
     pipelineInfo.pStages = firstPeelShaderStages;
+    pipelineInfo.subpass = 1;
 
     res = vkCreateGraphicsPipelines(engine->vkDevice, VK_NULL_HANDLE, 1, &pipelineInfo, NULL,
                                     &engine->firstPeelPipeline);
@@ -2180,8 +2171,7 @@ void createSecondaryBuffers(struct engine* engine)
         VkCommandBufferBeginInfo commandBufferBeginInfo = {};
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = NULL;
-        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
-                                       VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;        
         LOGI("Creating Secondary Buffer %d using subpass %d", i, 0);
         res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[i], &commandBufferBeginInfo);
@@ -2239,8 +2229,7 @@ void createSecondaryBuffers(struct engine* engine)
             VkCommandBufferBeginInfo commandBufferBeginInfo = {};
             commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             commandBufferBeginInfo.pNext = NULL;
-            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
-                                           VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
             commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;            
             LOGI("Creating Secondary Buffer %d using subpass %d (layer %d, swapchainImage %d)", cmdBuffIndex, commandBufferInheritanceInfo.subpass, layer, i);
             res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
@@ -2362,8 +2351,7 @@ void createSecondaryBuffers(struct engine* engine)
             VkCommandBufferBeginInfo commandBufferBeginInfo = {};
             commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             commandBufferBeginInfo.pNext = NULL;
-            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT |
-                                           VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+            commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
             commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
 
             LOGI("Creating secondaryCommandBuffer %d using subpass %d (layer %d, swapchainImage %d)", cmdBuffIndex, layer*2+2, layer, i);
@@ -2510,7 +2498,7 @@ static void engine_draw_frame(struct engine* engine) {
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.pNext = NULL;
-    commandBufferBeginInfo.flags = 0;
+    commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     commandBufferBeginInfo.pInheritanceInfo = NULL;
     res = vkBeginCommandBuffer(engine->renderCommandBuffer[0], &commandBufferBeginInfo);
     if (res != VK_SUCCESS) {
@@ -2558,7 +2546,7 @@ static void engine_draw_frame(struct engine* engine) {
                              VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #else
         vkCmdNextSubpass(engine->renderCommandBuffer[0],
-                         VK_SUBPASS_CONTENTS_INLINE);
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #endif
 //        LOGI("Peel: Executing secondaryCommandBuffer %d", cmdBuffIndex);
         vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
@@ -2571,7 +2559,7 @@ static void engine_draw_frame(struct engine* engine) {
         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #else
         vkCmdNextSubpass(engine->renderCommandBuffer[0],
-                         VK_SUBPASS_CONTENTS_INLINE);
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 #endif
         if (engine->displayLayer < 0 || layer==engine->displayLayer)
         {
