@@ -15,7 +15,6 @@
  *
  */
 
-//#define dontUseSubpasses 1
 #define MAX_LAYERS 8
 
 //BEGIN_INCLUDE(all)
@@ -98,7 +97,7 @@ struct engine {
     VkFramebuffer *framebuffers;
     uint8_t *uniformMappedMemory;
     VkSemaphore presentCompleteSemaphore;
-    VkRenderPass renderPass[9];
+    VkRenderPass renderPass;
     VkPipelineLayout pipelineLayout;
     VkPipelineLayout blendPeelPipelineLayout;
     VkDescriptorSetLayout *descriptorSetLayouts;
@@ -1012,41 +1011,21 @@ static int engine_init_display(struct engine* engine) {
     assert(subpassDependencyIndex==subpassDependencyCount);
 
     LOGI("Creating renderpass %d subpasses %d subpassDependencies", subpassCount, subpassDependencyCount);
-    VkRenderPassCreateInfo rp_info[subpassCount];
-#ifndef dontUseSubpasses
-    rp_info[0].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    rp_info[0].pNext = NULL;
-    rp_info[0].flags=0;
-    rp_info[0].attachmentCount = 4;
-    rp_info[0].pAttachments = attachments;
-    rp_info[0].subpassCount = subpassCount;
-    rp_info[0].pSubpasses = subpasses;
-    rp_info[0].dependencyCount = subpassDependencyCount;
-    rp_info[0].pDependencies = subpassDependencies;
-    res = vkCreateRenderPass(engine->vkDevice, &rp_info[0], NULL, &engine->renderPass[0]);
+    VkRenderPassCreateInfo rp_info;
+    rp_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rp_info.pNext = NULL;
+    rp_info.flags=0;
+    rp_info.attachmentCount = 4;
+    rp_info.pAttachments = attachments;
+    rp_info.subpassCount = subpassCount;
+    rp_info.pSubpasses = subpasses;
+    rp_info.dependencyCount = subpassDependencyCount;
+    rp_info.pDependencies = subpassDependencies;
+    res = vkCreateRenderPass(engine->vkDevice, &rp_info, NULL, &engine->renderPass);
     if (res != VK_SUCCESS) {
         LOGE ("vkCreateRenderPass returned error. %d\n", res);
         return -1;
     }
-#else
-    for (int i = 0; i<9; i++)
-    {
-        rp_info[i].sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rp_info[i].pNext = NULL;
-        rp_info[i].attachmentCount = 4;
-        rp_info[i].pAttachments = attachments;
-        rp_info[i].subpassCount = 1;
-        rp_info[i].pSubpasses = &subpasses[i];
-        rp_info[i].dependencyCount = 0;
-        rp_info[i].pDependencies = NULL;
-        LOGI("Creating renderpass %d", i);
-        res = vkCreateRenderPass(engine->vkDevice, &rp_info[i], NULL, &engine->renderPass[i]);
-        if (res != VK_SUCCESS) {
-            LOGE ("vkCreateRenderPass returned error. %d\n", res);
-            return -1;
-        }
-    }
-#endif
 
     LOGI("Renderpass created");
 
@@ -1196,7 +1175,7 @@ static int engine_init_display(struct engine* engine) {
         VkFramebufferCreateInfo fb_info;
         fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fb_info.pNext = NULL;
-        fb_info.renderPass = engine->renderPass[0];
+        fb_info.renderPass = engine->renderPass;
         fb_info.attachmentCount = 4;
         fb_info.pAttachments = imageViewAttachments;
         fb_info.width = swapChainExtent.width;
@@ -1476,7 +1455,7 @@ int setupTraditionalBlendPipeline(struct engine* engine)
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.stageCount = 2;
-    pipelineInfo.renderPass = engine->renderPass[0];
+    pipelineInfo.renderPass = engine->renderPass;
     pipelineInfo.subpass = 0;
 
     VkResult res;
@@ -1654,7 +1633,7 @@ int setupPeelPipeline(struct engine* engine) {
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = peelShaderStages;
     pipelineInfo.stageCount = 2;
-    pipelineInfo.renderPass = engine->renderPass[0];
+    pipelineInfo.renderPass = engine->renderPass;
     pipelineInfo.subpass = 3;
 
     LOGI("Creating peel pipeline");
@@ -1835,7 +1814,7 @@ int setupBlendPipeline(struct engine* engine) {
     pipelineInfo.pDepthStencilState = &ds;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.stageCount = 2;
-    pipelineInfo.renderPass = engine->renderPass[0];
+    pipelineInfo.renderPass = engine->renderPass;
     pipelineInfo.subpass = 2;
 
     VkResult res;
@@ -2161,7 +2140,7 @@ void createSecondaryBuffers(struct engine* engine)
         VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
         commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
         commandBufferInheritanceInfo.pNext = 0;
-        commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+        commandBufferInheritanceInfo.renderPass = engine->renderPass;
         commandBufferInheritanceInfo.subpass = 0;
         commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
         commandBufferInheritanceInfo.occlusionQueryEnable = 0;
@@ -2213,14 +2192,8 @@ void createSecondaryBuffers(struct engine* engine)
             VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
             commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
             commandBufferInheritanceInfo.pNext = 0;
-#ifdef dontUseSubpasses
-            commandBufferInheritanceInfo.renderPass = engine->renderPass[layer*2+1];
-            commandBufferInheritanceInfo.subpass = 0;
-            LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
-#else
-            commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+            commandBufferInheritanceInfo.renderPass = engine->renderPass;
             commandBufferInheritanceInfo.subpass = layer*2+1;
-#endif
             commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
             commandBufferInheritanceInfo.occlusionQueryEnable = 0;
             commandBufferInheritanceInfo.queryFlags = 0;
@@ -2335,14 +2308,8 @@ void createSecondaryBuffers(struct engine* engine)
             VkCommandBufferInheritanceInfo commandBufferInheritanceInfo;
             commandBufferInheritanceInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
             commandBufferInheritanceInfo.pNext = 0;
-#ifdef dontUseSubpasses
-            commandBufferInheritanceInfo.renderPass = engine->renderPass[layer*2+1];
-            commandBufferInheritanceInfo.subpass = 0;
-            LOGI("Creating secondaryCommandBuffer %d using renderpass %d", cmdBuffIndex, layer*2+1);
-#else
-            commandBufferInheritanceInfo.renderPass = engine->renderPass[0];
+            commandBufferInheritanceInfo.renderPass = engine->renderPass;
             commandBufferInheritanceInfo.subpass = layer*2+2;
-#endif
             commandBufferInheritanceInfo.framebuffer = engine->framebuffers[i];
             commandBufferInheritanceInfo.occlusionQueryEnable = 0;
             commandBufferInheritanceInfo.queryFlags = 0;
@@ -2486,7 +2453,7 @@ static void engine_draw_frame(struct engine* engine) {
     VkRenderPassBeginInfo renderPassBeginInfo;
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassBeginInfo.pNext = NULL;
-    renderPassBeginInfo.renderPass = engine->renderPass[0];
+    renderPassBeginInfo.renderPass = engine->renderPass;
     renderPassBeginInfo.framebuffer = engine->framebuffers[currentBuffer];
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
@@ -2539,28 +2506,14 @@ static void engine_draw_frame(struct engine* engine) {
     for (int layer = 0; layer < engine->layerCount; layer++) {
         int cmdBuffIndex = engine->swapchainImageCount + layer * engine->swapchainImageCount*2 + currentBuffer;
         //Peel
-#ifdef dontUseSubpasses
-        vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
-        renderPassBeginInfo.renderPass = engine->renderPass[layer*2+1];
-        vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
-                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-#else
         vkCmdNextSubpass(engine->renderCommandBuffer[0],
                          VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-#endif
 //        LOGI("Peel: Executing secondaryCommandBuffer %d", cmdBuffIndex);
         vkCmdExecuteCommands(engine->renderCommandBuffer[0], 1,
                            &engine->secondaryCommandBuffers[cmdBuffIndex]);
         //Blend
-#ifdef dontUseSubpasses
-        vkCmdEndRenderPass(engine->renderCommandBuffer[0]);
-        renderPassBeginInfo.renderPass = engine->renderPass[layer*2+2];
-        vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
-        VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-#else
         vkCmdNextSubpass(engine->renderCommandBuffer[0],
                          VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-#endif
         if (engine->displayLayer < 0 || layer==engine->displayLayer)
         {
 //        LOGI("Blend: Executing secondaryCommandBuffer %d", cmdBuffIndex + engine->swapchainImageCount);
