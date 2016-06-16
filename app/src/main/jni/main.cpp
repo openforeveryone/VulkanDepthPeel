@@ -2672,17 +2672,30 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) 
                 engine->layerCount=MAX_LAYERS;
             LOGI("Using %d layers", engine->layerCount);
         }
+//        if ((keycode==AKEYCODE_DPAD_LEFT || keycode==AKEYCODE_DPAD_RIGHT) && action == AKEY_EVENT_ACTION_DOWN) {
+//            if (keycode == AKEYCODE_DPAD_RIGHT)
+//                engine->boxCount+=50;
+//            else
+//                engine->boxCount-=50;
+//            if (engine->boxCount<50)
+//                engine->boxCount=50;
+//            else if (engine->boxCount>MAX_BOXES)
+//                engine->boxCount=MAX_BOXES;
+//            LOGI("Drawing %d boxes", engine->boxCount);
+//            engine->rebuildCommadBuffersRequired=true;
+//        }
         if ((keycode==AKEYCODE_DPAD_LEFT || keycode==AKEYCODE_DPAD_RIGHT) && action == AKEY_EVENT_ACTION_DOWN) {
             if (keycode == AKEYCODE_DPAD_RIGHT)
-                engine->boxCount+=50;
+                engine->displayLayer++;
             else
-                engine->boxCount-=50;
-            if (engine->boxCount<50)
-                engine->boxCount=50;
-            else if (engine->boxCount>MAX_BOXES)
-                engine->boxCount=MAX_BOXES;
-            LOGI("Drawing %d boxes", engine->boxCount);
-            engine->rebuildCommadBuffersRequired=true;
+                engine->displayLayer--;
+            if (engine->displayLayer<0)
+            {
+                engine->displayLayer=-1;
+                LOGI("Displaying all layers");
+            }
+            else
+                LOGI("Displaying only layer %d", engine->displayLayer);
         }
         if (keycode==AKEYCODE_BACK && action == AKEY_EVENT_ACTION_UP) {
             ANativeActivity_finish(engine->app->activity);
