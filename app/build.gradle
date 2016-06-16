@@ -11,12 +11,13 @@ model {
             targetSdkVersion.apiLevel = 23
         }
         ndk {
-            platformVersion = 24
+            platformVersion = 23
             moduleName ='native-activity'
             toolchain = 'clang'
             stl = 'gnustl_static'
             cppFlags.add('-std=c++11')
-            ldLibs.addAll(['log', 'android', 'vulkan'])
+            ldLibs.addAll(['log', 'android'])
+            abiFilters.addAll(['x86', 'armeabi-v7a'])
         }
         sources {
             main {
@@ -33,15 +34,6 @@ model {
                 proguardFiles.add(file('proguard-rules.txt'))
                 ndk {
                     debuggable true
-                }
-            }
-        }
-        productFlavors {
-            create("x86") {
-                ndk {
-                    // You can customize the NDK configurations for each
-                    // productFlavors and buildTypes.
-                    abiFilters.add("x86")
                 }
             }
         }

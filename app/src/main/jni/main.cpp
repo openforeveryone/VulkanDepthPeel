@@ -37,14 +37,14 @@
 #include <android_native_app_glue.h>
 #include "stdredirect.h"
 #define VK_USE_PLATFORM_ANDROID_KHR
+#include "vulkan_wrapper.h"
 #else
 #include <xcb/xcb.h>
 #include <xcb/xcb_icccm.h>
 #define VK_USE_PLATFORM_XCB_KHR
-#endif
-
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_platform.h>
+#endif
 
 void createSecondaryBuffers(struct engine* engine);
 int setupUniforms(struct engine* engine);
@@ -213,6 +213,12 @@ static int engine_init_display(struct engine* engine) {
         LOGI("Current working dir: %s\n", cwd);
 
     //We will put the working directory back to oldcwd later.
+    //Use glload to load the vulkan loader and setup funcitions.
+    if (InitVulkan()==0)
+    {
+        LOGI("InitVulkan() failed");
+        return -1;
+    }
 #endif
 
     VkResult res;
@@ -248,7 +254,7 @@ static int engine_init_display(struct engine* engine) {
     app_info.applicationVersion = 1;
     app_info.pEngineName = "My Test App Engine";
     app_info.engineVersion = 1;
-    app_info.apiVersion = VK_MAKE_VERSION(1, 0, 3);
+    app_info.apiVersion = VK_MAKE_VERSION(1, 0, 2);
 
     //Initialize the VkInstanceCreateInfo structure
     VkInstanceCreateInfo inst_info;
@@ -259,7 +265,7 @@ static int engine_init_display(struct engine* engine) {
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
 #ifdef __ANDROID__
-    inst_info.enabledLayerCount = 1;
+    inst_info.enabledLayerCount = 0;
 #else
     inst_info.enabledLayerCount = 0;
 #endif
@@ -386,7 +392,7 @@ static int engine_init_display(struct engine* engine) {
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
 #ifdef __ANDROID__
-    dci.enabledLayerCount = 1;
+    dci.enabledLayerCount = 0;
 #else
     dci.enabledLayerCount = 0;
 #endif
@@ -2152,7 +2158,7 @@ void createSecondaryBuffers(struct engine* engine)
         commandBufferBeginInfo.pNext = NULL;
         commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;        
-        LOGI("Creating Secondary Buffer %d using subpass %d", i, 0);
+        LOGI("Creating Secondary Buffer %d using subpass %d (%d boxes)", i, 0, engine->boxCount);
         res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[i], &commandBufferBeginInfo);
         if (res != VK_SUCCESS) {
             printf("vkBeginCommandBuffer returned error.\n");
@@ -2418,7 +2424,12 @@ static void engine_draw_frame(struct engine* engine) {
         return;
     }
 
-    VkClearValue clearValues[3];
+//    if (engine->frame>0)
+//        return;
+
+//    sleep(1);
+
+     VkClearValue clearValues[3];
     clearValues[0].color.float32[0] = 0.0f;
     clearValues[0].color.float32[1] = 0.0f;
     clearValues[0].color.float32[2] = 0.0f;
@@ -2494,7 +2505,7 @@ static void engine_draw_frame(struct engine* engine) {
                          0, NULL, 0, NULL, 1, &imageMemoryBarrier);
 
     vkCmdBeginRenderPass(engine->renderCommandBuffer[0], &renderPassBeginInfo,
-                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
     if (engine->splitscreen) {
         //Draw using traditional depth dependent transparency:
@@ -2650,6 +2661,29 @@ static int32_t engine_handle_input(struct android_app* app, AInputEvent* event) 
             engine->splitscreen = !engine->splitscreen;
             engine->rebuildCommadBuffersRequired=true;
         }
+        if ((keycode==AKEYCODE_DPAD_DOWN || keycode==AKEYCODE_DPAD_UP) && action == AKEY_EVENT_ACTION_DOWN) {
+            if (keycode==AKEYCODE_DPAD_UP)
+                engine->layerCount++;
+            else
+                engine->layerCount--;
+            if (engine->layerCount<1)
+                engine->layerCount=1;
+            else if (engine->layerCount>MAX_LAYERS)
+                engine->layerCount=MAX_LAYERS;
+            LOGI("Using %d layers", engine->layerCount);
+        }
+        if ((keycode==AKEYCODE_DPAD_LEFT || keycode==AKEYCODE_DPAD_RIGHT) && action == AKEY_EVENT_ACTION_DOWN) {
+            if (keycode == AKEYCODE_DPAD_RIGHT)
+                engine->boxCount+=50;
+            else
+                engine->boxCount-=50;
+            if (engine->boxCount<50)
+                engine->boxCount=50;
+            else if (engine->boxCount>MAX_BOXES)
+                engine->boxCount=MAX_BOXES;
+            LOGI("Drawing %d boxes", engine->boxCount);
+            engine->rebuildCommadBuffersRequired=true;
+        }
         if (keycode==AKEYCODE_BACK && action == AKEY_EVENT_ACTION_UP) {
             ANativeActivity_finish(engine->app->activity);
         }
@@ -2682,15 +2716,17 @@ static void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             engine_term_display(engine);
             break;
         case APP_CMD_GAINED_FOCUS:
+            LOGI("APP_CMD_GAINED_FOCUS");
             // When our app gains focus, we start monitoring the accelerometer.
-            if (engine->accelerometerSensor != NULL) {
-                ASensorEventQueue_enableSensor(engine->sensorEventQueue,
-                                               engine->accelerometerSensor);
-                // We'd like to get 60 events per second (in us).
-                ASensorEventQueue_setEventRate(engine->sensorEventQueue,
-                                               engine->accelerometerSensor,
-                                               (1000L/60)*1000);
-            }
+//            if (engine->accelerometerSensor != NULL) {
+//                ASensorEventQueue_enableSensor(engine->sensorEventQueue,
+//                                               engine->accelerometerSensor);
+//                // We'd like to get 60 events per second (in us).
+//                ASensorEventQueue_setEventRate(engine->sensorEventQueue,
+//                                               engine->accelerometerSensor,
+//                                               (1000L/60)*1000);
+//            }
+            engine->animating = 1;
             break;
         case APP_CMD_LOST_FOCUS:
             // When our app loses focus, we stop monitoring the accelerometer.
@@ -2729,19 +2765,22 @@ void android_main(struct android_app* state) {
     engine.frameRateClock->reset();
     engine.simulation = new Simulation;
     engine.simulation->step();
-    engine.splitscreen = false;
+    engine.splitscreen = true;
     engine.rebuildCommadBuffersRequired = false;
+    engine.displayLayer=-1;
+    engine.layerCount=4;
+    engine.boxCount=100;
 
 
     // Prepare to monitor accelerometer
-    engine.sensorManager = ASensorManager_getInstance();
-    engine.accelerometerSensor = ASensorManager_getDefaultSensor(
-                                        engine.sensorManager,
-                                        ASENSOR_TYPE_ACCELEROMETER);
-    engine.sensorEventQueue = ASensorManager_createEventQueue(
-                                    engine.sensorManager,
-                                    state->looper, LOOPER_ID_USER,
-                                    NULL, NULL);
+//    engine.sensorManager = ASensorManager_getInstance();
+//    engine.accelerometerSensor = ASensorManager_getDefaultSensor(
+//                                        engine.sensorManager,
+//                                        ASENSOR_TYPE_ACCELEROMETER);
+//    engine.sensorEventQueue = ASensorManager_createEventQueue(
+//                                    engine.sensorManager,
+//                                    state->looper, LOOPER_ID_USER,
+//                                    NULL, NULL);
 
     if (state->savedState != NULL) {
         // We are starting with a previous saved state; restore from it.
@@ -2759,10 +2798,10 @@ void android_main(struct android_app* state) {
         // If not animating, we will block forever waiting for events.
         // If animating, we loop until all events are read, then continue
         // to draw the next frame of animation.
-//        LOGI("Polling %d", engine.animating);
+//        LOGI("Polling. animating: %s", engine.animating ? "true" : "false");
         while ((ident=ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events,
                                       (void**)&source)) >= 0) {
-//            LOGI("Poll returned");
+//            LOGI("Poll returned. animating: %s", engine.animating ? "true" : "false");
 
             // Process this event.
             if (source != NULL) {
@@ -2799,6 +2838,7 @@ void android_main(struct android_app* state) {
 
             // Drawing is throttled to the screen update rate, so there
             // is no need to do timing here.
+//            LOGI("calling engine_draw_frame");
             engine_draw_frame(&engine);
             engine.simulation->step();
         }
@@ -2813,6 +2853,8 @@ int main()
     struct engine engine;
     engine.width=800;
     engine.height=600;
+//    engine.width=1980;
+//    engine.height=1080;
     engine.animating=1;
     engine.vulkanSetupOK=false;
     engine.frameRateClock=new btClock;
