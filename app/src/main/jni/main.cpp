@@ -24,6 +24,7 @@
 #include <cassert>
 #include <unistd.h>
 #include <stdlib.h>
+#include <cinttypes>
 
 #include <stdio.h>
 #include "matrix.h"
@@ -492,8 +493,7 @@ static int engine_init_display(struct engine* engine) {
     swapCreateInfo.oldSwapchain = VK_NULL_HANDLE;
     swapCreateInfo.clipped = VK_TRUE;
     swapCreateInfo.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
-    swapCreateInfo.imageUsage =
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    swapCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapCreateInfo.queueFamilyIndexCount = 0;
     swapCreateInfo.pQueueFamilyIndices = NULL;
@@ -668,10 +668,17 @@ static int engine_init_display(struct engine* engine) {
         typeBits >>= 1;
     }
 
+    VkDeviceSize imageoffset = 0;
+    if (memoryRequirements.alignment > 1 && memoryRequirements.size % memoryRequirements.alignment != 0)
+        imageoffset = memoryRequirements.size + (memoryRequirements.alignment-(memoryRequirements.size % memoryRequirements.alignment));
+    else
+        imageoffset = memoryRequirements.size;
+
+    LOGI("MemoryRequirements.size: %" PRIu64 " memoryRequirements.alignment: %" PRIu64 " imageoffset: %" PRIu64 ".", memoryRequirements.size, memoryRequirements.alignment, imageoffset);
     VkMemoryAllocateInfo memAllocInfo;
     memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memAllocInfo.pNext = NULL;
-    memAllocInfo.allocationSize = memoryRequirements.size*2;
+    memAllocInfo.allocationSize = imageoffset + memoryRequirements.size;
     memAllocInfo.memoryTypeIndex = typeIndex;
 
     //Allocate memory
@@ -684,7 +691,7 @@ static int engine_init_display(struct engine* engine) {
     for (int i=0; i<2; i++)
     {
         //Bind memory
-        res = vkBindImageMemory(engine->vkDevice, engine->depthImage[i], engine->depthMemory, memoryRequirements.size*i);
+        res = vkBindImageMemory(engine->vkDevice, engine->depthImage[i], engine->depthMemory, imageoffset*i);
         if (res != VK_SUCCESS) {
             LOGE ("vkBindImageMemory returned error while creating depth buffer. %d\n", res);
             return -1;
@@ -1187,6 +1194,7 @@ static int engine_init_display(struct engine* engine) {
         fb_info.width = swapChainExtent.width;
         fb_info.height = swapChainExtent.height;
         fb_info.layers = 1;
+        fb_info.flags = 0;
 
         res = vkCreateFramebuffer(engine->vkDevice, &fb_info, NULL, &engine->framebuffers[i]);
         if (res != VK_SUCCESS) {
@@ -2866,8 +2874,10 @@ int main()
     struct engine engine;
     engine.width=800;
     engine.height=600;
-//    engine.width=1980;
+//    engine.width=1920;
 //    engine.height=1080;
+//    engine.width=4096;
+//    engine.height=2160;
     engine.animating=1;
     engine.vulkanSetupOK=false;
     engine.frameRateClock=new btClock;
