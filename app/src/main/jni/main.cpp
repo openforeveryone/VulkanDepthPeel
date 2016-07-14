@@ -700,7 +700,7 @@ static int engine_init_display(struct engine* engine) {
         VkImageMemoryBarrier imageMemoryBarrier;
         imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         imageMemoryBarrier.pNext = NULL;
         imageMemoryBarrier.image = engine->depthImage[i];
         imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -810,7 +810,7 @@ static int engine_init_display(struct engine* engine) {
         VkImageMemoryBarrier imageMemoryBarrier;
         imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         imageMemoryBarrier.pNext = NULL;
         imageMemoryBarrier.image = engine->peelImage;
         imageMemoryBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -910,12 +910,12 @@ static int engine_init_display(struct engine* engine) {
     attachments[0].flags = 0;
     attachments[1].format = depth_format;
     attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
-    attachments[1].finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+    attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[1].flags = 0;
     attachments[2].format = format;
     attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
@@ -923,8 +923,8 @@ static int engine_init_display(struct engine* engine) {
     attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
-    attachments[2].finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+    attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachments[2].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     attachments[2].flags = 0;
     attachments[3].format = depth_format;
     attachments[3].samples = VK_SAMPLE_COUNT_1_BIT;
@@ -932,23 +932,31 @@ static int engine_init_display(struct engine* engine) {
     attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[3].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[3].initialLayout = VK_IMAGE_LAYOUT_GENERAL;
-    attachments[3].finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+    attachments[3].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachments[3].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     attachments[3].flags = 0;
 
     VkAttachmentReference color_reference;
     color_reference.attachment = 0;
     color_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference depth_reference[2];
-    depth_reference[0].attachment = 1;
-    depth_reference[0].layout = VK_IMAGE_LAYOUT_GENERAL;
-    depth_reference[1].attachment = 3;
-    depth_reference[1].layout = VK_IMAGE_LAYOUT_GENERAL;
+    VkAttachmentReference depth_attachment_reference[2];
+    depth_attachment_reference[0].attachment = 1;
+    depth_attachment_reference[0].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment_reference[1].attachment = 3;
+    depth_attachment_reference[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference depth_inputattachment_reference[2];
+    depth_inputattachment_reference[0].attachment = 1;
+    depth_inputattachment_reference[0].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    depth_inputattachment_reference[1].attachment = 3;
+    depth_inputattachment_reference[1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkAttachmentReference peelcolor_reference;
-    peelcolor_reference.attachment = 2;
-    peelcolor_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
+    VkAttachmentReference peelcolor_attachment_reference;
+    peelcolor_attachment_reference.attachment = 2;
+    peelcolor_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference peelcolor_inputattachment_reference;
+    peelcolor_inputattachment_reference.attachment = 2;
+    peelcolor_inputattachment_reference.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     uint32_t colour_attachment = 0;    
     uint32_t depth_attachment[2] = {1, 3};
@@ -965,7 +973,7 @@ static int engine_init_display(struct engine* engine) {
     subpasses[0].colorAttachmentCount = 1;
     subpasses[0].pColorAttachments = &color_reference;
     subpasses[0].pResolveAttachments = NULL;
-    subpasses[0].pDepthStencilAttachment = &depth_reference[0];
+    subpasses[0].pDepthStencilAttachment = &depth_attachment_reference[0];
     subpasses[0].preserveAttachmentCount = 2;
     uint32_t PreserveAttachments[2] = {peel_attachment, depth_attachment[1]};
     subpasses[0].pPreserveAttachments = PreserveAttachments;
@@ -977,11 +985,11 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 1].flags = 0;
         subpasses[i * 2 + 1].inputAttachmentCount = (i==0) ? 0 : 1;
-        subpasses[i * 2 + 1].pInputAttachments = &depth_reference[!(i%2)];
+        subpasses[i * 2 + 1].pInputAttachments = &depth_inputattachment_reference[!(i%2)];
         subpasses[i * 2 + 1].colorAttachmentCount = 1;
-        subpasses[i * 2 + 1].pColorAttachments = &peelcolor_reference;
+        subpasses[i * 2 + 1].pColorAttachments = &peelcolor_attachment_reference;
         subpasses[i * 2 + 1].pResolveAttachments = NULL;
-        subpasses[i * 2 + 1].pDepthStencilAttachment = &depth_reference[i%2];
+        subpasses[i * 2 + 1].pDepthStencilAttachment = &depth_attachment_reference[i%2];
         subpasses[i * 2 + 1].preserveAttachmentCount = 2;
         PreserveAttachments[0] = colour_attachment;
         PreserveAttachments[1] = depth_attachment[!(i%2)];
@@ -990,11 +998,11 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 2].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpasses[i * 2 + 2].flags = 0;
         subpasses[i * 2 + 2].inputAttachmentCount = 1;
-        subpasses[i * 2 + 2].pInputAttachments = &peelcolor_reference;
+        subpasses[i * 2 + 2].pInputAttachments = &peelcolor_inputattachment_reference;
         subpasses[i * 2 + 2].colorAttachmentCount = 1;
         subpasses[i * 2 + 2].pColorAttachments = &color_reference;
         subpasses[i * 2 + 2].pResolveAttachments = NULL;
-        subpasses[i * 2 + 2].pDepthStencilAttachment = &depth_reference[i%2];
+        subpasses[i * 2 + 2].pDepthStencilAttachment = &depth_attachment_reference[i%2];
         subpasses[i * 2 + 2].preserveAttachmentCount = 2;
         PreserveAttachments = new uint32_t[2];  //This will leak
         PreserveAttachments[0] = peel_attachment;
@@ -2114,7 +2122,7 @@ int setupUniforms(struct engine* engine)
     writes[MAX_BOXES+3].dstBinding = 0;
 
     VkDescriptorImageInfo depthuniformImageInfo[2];
-    depthuniformImageInfo[0].imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    depthuniformImageInfo[0].imageLayout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depthuniformImageInfo[0].imageView=engine->depthView[0];
     depthuniformImageInfo[0].sampler=NULL;
     writes[MAX_BOXES+4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2126,7 +2134,7 @@ int setupUniforms(struct engine* engine)
     writes[MAX_BOXES+4].dstArrayElement = 0;
     writes[MAX_BOXES+4].dstBinding = 0;
 
-    depthuniformImageInfo[1].imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+    depthuniformImageInfo[1].imageLayout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depthuniformImageInfo[1].imageView=engine->depthView[1];
     depthuniformImageInfo[1].sampler=NULL;
     writes[MAX_BOXES+5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2437,17 +2445,11 @@ static void engine_draw_frame(struct engine* engine) {
 
 //    sleep(1);
 
-     VkClearValue clearValues[3];
+    VkClearValue clearValues[1];
     clearValues[0].color.float32[0] = 0.0f;
     clearValues[0].color.float32[1] = 0.0f;
     clearValues[0].color.float32[2] = 0.0f;
     clearValues[0].color.float32[3] = 1.0f;
-    clearValues[1].depthStencil.depth = 1.0f;
-    clearValues[1].depthStencil.stencil = 0;
-    clearValues[2].color.float32[0] = 0.0f;
-    clearValues[2].color.float32[1] = 0.0f;
-    clearValues[2].color.float32[2] = 0.0f;
-    clearValues[2].color.float32[3] = 0.0f;
 
     //The queue is idle, now is a good time to update the bound memory.
     updateUniforms(engine);
@@ -2478,7 +2480,7 @@ static void engine_draw_frame(struct engine* engine) {
     renderPassBeginInfo.renderArea.offset.y = 0;
     renderPassBeginInfo.renderArea.extent.width = engine->width;
     renderPassBeginInfo.renderArea.extent.height = engine->height;
-    renderPassBeginInfo.clearValueCount = 3;
+    renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = clearValues;// + (i*2);
 
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
