@@ -135,7 +135,7 @@ struct engine {
 };
 
 char* loadAsset(const char* filename, struct engine *pEngine, bool &ok, size_t &size)
-{    
+{
     ok=false;
 #ifdef __ANDROID__
     char *buffer = NULL;
@@ -373,6 +373,7 @@ static int engine_init_display(struct engine* engine) {
     res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &availableLayerCount, NULL);
     LOGI("There are %d device layers avalible\n", availableLayerCount);
     availableLayers[availableLayerCount];
+    if (availableLayerCount>0)
     res = vkEnumerateDeviceLayerProperties(engine->physicalDevice, &availableLayerCount,
                                            availableLayers);
     for (int i =0; i < availableLayerCount; i++)
@@ -617,8 +618,7 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("swapchainImageCount %d.\n", engine->swapchainImageCount);
 
     //Setup the depth buffer:
-    const VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
-//    const VkFormat depth_format = VK_FORMAT_D16_UNORM;
+    const VkFormat depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
 
     VkImageCreateInfo imageCreateInfo;
     VkFormatProperties props;
@@ -958,7 +958,7 @@ static int engine_init_display(struct engine* engine) {
     peelcolor_inputattachment_reference.attachment = 2;
     peelcolor_inputattachment_reference.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    uint32_t colour_attachment = 0;    
+    uint32_t colour_attachment = 0;
     uint32_t depth_attachment[2] = {1, 3};
     uint32_t peel_attachment = 2;
 
@@ -979,7 +979,7 @@ static int engine_init_display(struct engine* engine) {
     subpasses[0].pPreserveAttachments = PreserveAttachments;
 
     for (int i =0; i<MAX_LAYERS; i++)
-    {        
+    {
 
         uint32_t *PreserveAttachments = new uint32_t[2];  //This will leak
         subpasses[i * 2 + 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1230,6 +1230,7 @@ static int engine_init_display(struct engine* engine) {
         return -1;
     }
 
+    found = 0;
     vkGetBufferMemoryRequirements(engine->vkDevice, engine->vertexBuffer, &memoryRequirements);
     typeBits = memoryRequirements.memoryTypeBits;
     VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1241,8 +1242,8 @@ static int engine_init_display(struct engine* engine) {
                 found=1;
                 break;
             }
-            typeBits >>= 1;
         }
+        typeBits >>= 1;
     }
 
     if (!found)
@@ -1667,7 +1668,7 @@ int setupPeelPipeline(struct engine* engine) {
         return -1;
     }
 
-    LOGI("Creating up first peel pipeline");
+    LOGI("Creating first peel pipeline");
     pipelineInfo.layout = engine->pipelineLayout;
     pipelineInfo.pStages = firstPeelShaderStages;
     pipelineInfo.subpass = 1;
@@ -1900,8 +1901,9 @@ int setupUniforms(struct engine* engine)
 
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(engine->vkDevice, uniformBuffer, &memoryRequirements);
-    uint8_t found;
+    uint8_t found = 0;
     uint32_t typeBits = memoryRequirements.memoryTypeBits;
+    LOGI("Uniform memory types %d", typeBits);
     VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     uint32_t typeIndex;
     for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
@@ -1912,8 +1914,8 @@ int setupUniforms(struct engine* engine)
                 found=1;
                 break;
             }
-            typeBits >>= 1;
         }
+        typeBits >>= 1;
     }
 
     if (!found)
@@ -1987,7 +1989,7 @@ int setupUniforms(struct engine* engine)
     if (res != VK_SUCCESS) {
         printf ("vkAllocateDescriptorSets returned error %d.\n", res);
         return -1;
-    }    
+    }
 
     res = vkAllocateDescriptorSets(engine->vkDevice, &descriptorSetAllocateInfo, &engine->identitySceneDescriptorSet);
     if (res != VK_SUCCESS) {
@@ -2173,7 +2175,7 @@ void createSecondaryBuffers(struct engine* engine)
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = NULL;
         commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-        commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;        
+        commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
         LOGI("Creating Secondary Buffer %d using subpass %d (%d boxes)", i, 0, engine->boxCount);
         res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[i], &commandBufferBeginInfo);
         if (res != VK_SUCCESS) {
@@ -2225,7 +2227,7 @@ void createSecondaryBuffers(struct engine* engine)
             commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             commandBufferBeginInfo.pNext = NULL;
             commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-            commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;            
+            commandBufferBeginInfo.pInheritanceInfo = &commandBufferInheritanceInfo;
             LOGI("Creating Secondary Buffer %d using subpass %d (layer %d, swapchainImage %d)", cmdBuffIndex, commandBufferInheritanceInfo.subpass, layer, i);
             res = vkBeginCommandBuffer(engine->secondaryCommandBuffers[cmdBuffIndex],
                                        &commandBufferBeginInfo);
@@ -2411,18 +2413,6 @@ void createSecondaryBuffers(struct engine* engine)
 
 void updateUniforms(struct engine* engine)
 {
-    //Create the uniforms
-//    float projectionMatrix[16];
-    float viewMatrix[16];
-    float modelMatrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
-    float MVMatrix[16];
-//    float MVPMatrix[16];
-
-    translate_matrix(0,0,-50, viewMatrix);
-    rotate_matrix(45+engine->frame, 0,1,0, modelMatrix);
-    multiply_matrix(viewMatrix, modelMatrix, MVMatrix);
-    //As the memory is still mapped we can write the result stright into uniformMappedMemory:
-//    multiply_matrix(projectionMatrix, MVMatrix, (float*)engine->uniformMappedMemory);
     perspective_matrix(0.7853 /* 45deg */, (float)engine->width/(float)engine->height, 0.1f, 50.0f, (float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*MAX_BOXES));
     identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*(MAX_BOXES+1)));
     identity_matrix((float*)(engine->uniformMappedMemory + engine->modelBufferValsOffset*(MAX_BOXES+2)));
@@ -2985,7 +2975,7 @@ int main()
                     }
                     else
                         LOGI("Displaying only layer %d", engine.displayLayer);
-                }                
+                }
                 else if (key == 111 || key == 116)
                 {
                     if (key == 111)
