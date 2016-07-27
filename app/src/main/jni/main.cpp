@@ -236,7 +236,14 @@ static int engine_init_display(struct engine* engine) {
 
     const char *enabledLayerNames[] = {
             //List any layers you want to enable here.
-        "VK_LAYER_LUNARG_core_validation"
+        "VK_LAYER_LUNARG_core_validation",
+        "VK_LAYER_LUNARG_swapchain",
+        "VK_LAYER_LUNARG_device_limits",
+        "VK_LAYER_LUNARG_image",
+        "VK_LAYER_LUNARG_object_tracker",
+        "VK_LAYER_LUNARG_parameter_validation",
+        "VK_LAYER_GOOGLE_threading",
+        "VK_LAYER_GOOGLE_unique_objects"
     };
 
     const char *enabledInstanceExtensionNames[] = {
@@ -266,7 +273,7 @@ static int engine_init_display(struct engine* engine) {
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
 #ifdef __ANDROID__
-    inst_info.enabledLayerCount = 0;
+    inst_info.enabledLayerCount = 8;
 #else
     inst_info.enabledLayerCount = 0;
 #endif
@@ -394,7 +401,7 @@ static int engine_init_display(struct engine* engine) {
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
 #ifdef __ANDROID__
-    dci.enabledLayerCount = 0;
+    dci.enabledLayerCount = 8;
 #else
     dci.enabledLayerCount = 0;
 #endif
@@ -410,13 +417,7 @@ static int engine_init_display(struct engine* engine) {
     }
     LOGI("vkCreateDevice successful");
 
-#ifdef __ANDROID__
-    LOGI("Restoring working directory");
-    chdir(oldcwd);
 
-    if (getcwd(cwd, sizeof(cwd)) != NULL)
-        LOGI("Current working dir: %s\n", cwd);
-#endif
 
     //Setup the swapchain
     uint32_t formatCount;
@@ -488,7 +489,7 @@ static int engine_init_display(struct engine* engine) {
     //swapCreateInfo.imageExtent.width = width; //Should match window size
     //swapCreateInfo.imageExtent.height = height;
     swapCreateInfo.preTransform = preTransform;
-    swapCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     swapCreateInfo.imageArrayLayers = 1;
     swapCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     swapCreateInfo.oldSwapchain = VK_NULL_HANDLE;
@@ -1311,6 +1312,15 @@ static int engine_init_display(struct engine* engine) {
     createSecondaryBuffers(engine);
 
     engine->vulkanSetupOK=true;
+
+#ifdef __ANDROID__
+    LOGI("Restoring working directory");
+    chdir(oldcwd);
+
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+        LOGI("Current working dir: %s\n", cwd);
+#endif
+
     LOGI ("Vulkan setup complete");
 
     return 0;

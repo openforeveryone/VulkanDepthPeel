@@ -6,7 +6,7 @@ model {
         buildToolsVersion = '23.0.2'
 
         defaultConfig {
-            applicationId = 'com.example.native_activity'
+            applicationId = 'com.example.vulkandepthpeel'
             minSdkVersion.apiLevel    = 9
             targetSdkVersion.apiLevel = 23
         }
