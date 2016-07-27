@@ -16,6 +16,7 @@
  */
 
 #define MAX_LAYERS 8
+//#define FORCE_VALIDATION
 
 //BEGIN_INCLUDE(all)
 #include <initializer_list>
@@ -25,6 +26,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <cinttypes>
+#include <string.h>
 
 #include <stdio.h>
 #include "matrix.h"
@@ -194,13 +196,29 @@ static int engine_init_display(struct engine* engine) {
     LOGI ("Initializing Vulkan\n");
 
 #ifdef __ANDROID__
-    //Redirect stdio to android log so vulkan validation layer output is not lost.
+#ifdef FORCE_VALIDATION
+    //Redirect stdio to android log so vulkan validation layer output is not lost (should use the vulkan extension for this but some drivers don't support it).
     //Redirect code from https://codelab.wordpress.com/2014/11/03/how-to-use-standard-output-streams-for-logging-in-android-apps/
     /* make stdout line-buffered and stderr unbuffered */
     redirectStdIO();
+    {
+        //Copy vk_layer_settings.txt to a place where it can be found by the Vulkan loader.
+        bool ok;
+        size_t size;
+        char *vk_layer_settings = loadAsset("vk_layer_settings.txt", engine, ok, size);
+        if (ok) {
+            char filenamepath[1024] = "";
+            char *filename= "/vk_layer_settings.txt";
+            strcat(filenamepath, engine->app->activity->internalDataPath);
+            strcat(filenamepath, filename);
+            LOGI("filenamepath: %s\n", filenamepath);
+            FILE *write_ptr;
+            write_ptr = fopen(filenamepath,"wb");
+            fwrite(vk_layer_settings, size, 1, write_ptr);
+        }
+    }
 
-    //Set the working directory to somewhere that the
-
+    //Set the working directory to where we just put the vk_layer_settings.txt file.
     char oldcwd[1024];
     char cwd[1024];
     if (getcwd(oldcwd, sizeof(oldcwd)) != NULL)
@@ -212,6 +230,7 @@ static int engine_init_display(struct engine* engine) {
 
     if (getcwd(cwd, sizeof(cwd)) != NULL)
         LOGI("Current working dir: %s\n", cwd);
+#endif
 
     //We will put the working directory back to oldcwd later.
     //Use glload to load the vulkan loader and setup funcitions.
@@ -272,7 +291,7 @@ static int engine_init_display(struct engine* engine) {
     inst_info.pApplicationInfo = &app_info;
     inst_info.enabledExtensionCount = 2;
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
-#ifdef __ANDROID__
+#ifdef FORCE_VALIDATION
     inst_info.enabledLayerCount = 8;
 #else
     inst_info.enabledLayerCount = 0;
@@ -400,7 +419,7 @@ static int engine_init_display(struct engine* engine) {
     dci.enabledExtensionCount = 1;
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
-#ifdef __ANDROID__
+#ifdef FORCE_VALIDATION
     dci.enabledLayerCount = 8;
 #else
     dci.enabledLayerCount = 0;
@@ -1314,11 +1333,13 @@ static int engine_init_display(struct engine* engine) {
     engine->vulkanSetupOK=true;
 
 #ifdef __ANDROID__
+#ifdef FORCE_VALIDATION
     LOGI("Restoring working directory");
     chdir(oldcwd);
 
     if (getcwd(cwd, sizeof(cwd)) != NULL)
         LOGI("Current working dir: %s\n", cwd);
+#endif
 #endif
 
     LOGI ("Vulkan setup complete");
