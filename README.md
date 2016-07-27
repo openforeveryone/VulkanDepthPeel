@@ -1,5 +1,5 @@
 # Vulkan depth peel demo
-Demonstrates order independent transparency on Vulkan using depth peeling.
+Demonstrates order independent transparency on Vulkan using depth peeling. This code accompanies the blog post [Depth Peeling Order Independent Transparency in Vulkan] (https://matthewwellings.com/blog/depth-peeling-order-independent-transparency-in-vulkan/).
 
 This demo will run on Linux (XCB) and Android. It makes use of subpasses, input attachments and reusable command buffers.
 
@@ -11,4 +11,4 @@ Keys (on Linux):
 
 ![Screenshot](https://github.com/openforeveryone/VulkanDepthPeel/blob/master/ScreenShot.png "Screenshot")
 
-All blocks are the same size and rendered in arbetary order in seperate draw calls.
+All blocks are the same size and rendered in arbitrary order in separate draw calls.
