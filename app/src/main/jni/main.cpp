@@ -17,6 +17,7 @@
 
 #define MAX_LAYERS 8
 //#define FORCE_VALIDATION
+//#define NO_SURFACE_EXTENSIONS //Usefull for mali devices that report no surface extentions.
 
 //BEGIN_INCLUDE(all)
 #include <initializer_list>
@@ -290,6 +291,9 @@ static int engine_init_display(struct engine* engine) {
     inst_info.flags = 0;
     inst_info.pApplicationInfo = &app_info;
     inst_info.enabledExtensionCount = 2;
+#ifdef NO_SURFACE_EXTENSIONS
+    inst_info.enabledExtensionCount = 0;
+#endif
     inst_info.ppEnabledExtensionNames = enabledInstanceExtensionNames;
 #ifdef FORCE_VALIDATION
     inst_info.enabledLayerCount = 8;
@@ -417,6 +421,9 @@ static int engine_init_display(struct engine* engine) {
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &deviceQueueCreateInfo;
     dci.enabledExtensionCount = 1;
+#ifdef NO_SURFACE_EXTENSIONS
+    dci.enabledExtensionCount = 0;
+#endif
     dci.ppEnabledExtensionNames = enabledDeviceExtensionNames;
     dci.pEnabledFeatures = NULL;
 #ifdef FORCE_VALIDATION
@@ -663,8 +670,10 @@ static int engine_init_display(struct engine* engine) {
     imageCreateInfo.queueFamilyIndexCount = 0;
     imageCreateInfo.pQueueFamilyIndices = NULL;
     imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     imageCreateInfo.flags = 0;
+
+    //First try using lazy memory:
+    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 
     VkMemoryRequirements memoryRequirements;
     //Create images for depth buffers
@@ -679,13 +688,47 @@ static int engine_init_display(struct engine* engine) {
 
     vkGetImageMemoryRequirements(engine->vkDevice, engine->depthImage[0], &memoryRequirements);
 
+    found = false;
     uint32_t typeBits = memoryRequirements.memoryTypeBits;
     uint32_t typeIndex;
-    //Get the index of the first set bit:
-    for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+    VkFlags requirements_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+    for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
         if ((typeBits & 1) == 1)//Check last bit;
-            break;
+        {
+            if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+            {
+                found=true;
+                break;
+            }
+        }
         typeBits >>= 1;
+    }
+    if (found)
+        LOGI("Using lazily allocated memory & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT for the depth buffers.");
+    else
+    {
+        LOGI("Not using lazily allocated memory for the depth buffers.");
+        //Either there was no lazily allocated memory or it cannot be used for the depth buffers (because no memory type with VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT was in the memoryTypeBits mask).
+        imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        for (int i=0; i<2; i++)
+            vkDestroyImage(engine->vkDevice, engine->depthImage[i], NULL);
+        //Create new images for depth buffers
+        for (int i=0; i<2; i++)
+        {
+            res = vkCreateImage(engine->vkDevice, &imageCreateInfo, NULL, &engine->depthImage[i]);
+            if (res != VK_SUCCESS) {
+                LOGE ("vkCreateImage returned error while creating depth buffer.\n");
+                return -1;
+            }
+        }
+        vkGetImageMemoryRequirements(engine->vkDevice, engine->depthImage[0], &memoryRequirements);
+        typeBits = memoryRequirements.memoryTypeBits;
+        //Get the index of the first set bit:
+        for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+            if ((typeBits & 1) == 1)//Check last bit;
+                break;
+            typeBits >>= 1;
+        }
     }
 
     VkDeviceSize imageoffset = 0;
@@ -785,8 +828,10 @@ static int engine_init_display(struct engine* engine) {
         imageCreateInfo.queueFamilyIndexCount = 0;
         imageCreateInfo.pQueueFamilyIndices = NULL;
         imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
         imageCreateInfo.flags = 0;
+
+        //First try using lazy memory:
+        imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 
         //Create image for peel buffer
         res = vkCreateImage(engine->vkDevice, &imageCreateInfo, NULL, &engine->peelImage);
@@ -798,13 +843,43 @@ static int engine_init_display(struct engine* engine) {
         VkMemoryRequirements memoryRequirements;
         vkGetImageMemoryRequirements(engine->vkDevice, engine->peelImage, &memoryRequirements);
 
+        found = false;
         uint32_t typeBits = memoryRequirements.memoryTypeBits;
         uint32_t typeIndex;
-        //Get the index of the first set bit:
-        for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+        VkFlags requirements_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT;
+        for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
             if ((typeBits & 1) == 1)//Check last bit;
-                break;
+            {
+                if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+                {
+                    found=true;
+                    break;
+                }
+            }
             typeBits >>= 1;
+        }
+        if (found)
+            LOGI("Using lazily allocated memory & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT for the peel buffer.");
+        else
+        {
+            LOGI("Not using lazily allocated memory for the peel buffer.");
+            imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+
+            vkDestroyImage(engine->vkDevice, engine->peelImage, NULL);
+            //Create image for peel buffer
+            res = vkCreateImage(engine->vkDevice, &imageCreateInfo, NULL, &engine->peelImage);
+            if (res != VK_SUCCESS) {
+                LOGE ("vkCreateImage returned error while creating peel buffer.\n");
+                return -1;
+            }
+            vkGetImageMemoryRequirements(engine->vkDevice, engine->peelImage, &memoryRequirements);
+            typeBits = memoryRequirements.memoryTypeBits;
+            //Get the index of the first set bit:
+            for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+                if ((typeBits & 1) == 1)//Check last bit;
+                    break;
+                typeBits >>= 1;
+            }
         }
 
         VkMemoryAllocateInfo memAllocInfo;
@@ -1253,7 +1328,7 @@ static int engine_init_display(struct engine* engine) {
     found = 0;
     vkGetBufferMemoryRequirements(engine->vkDevice, engine->vertexBuffer, &memoryRequirements);
     typeBits = memoryRequirements.memoryTypeBits;
-    VkFlags requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    requirements_mask = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
         if ((typeBits & 1) == 1)//Check last bit;
         {
