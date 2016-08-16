@@ -1097,11 +1097,12 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 2].colorAttachmentCount = 1;
         subpasses[i * 2 + 2].pColorAttachments = &color_reference;
         subpasses[i * 2 + 2].pResolveAttachments = NULL;
-        subpasses[i * 2 + 2].pDepthStencilAttachment = &depth_attachment_reference[i%2];
-        subpasses[i * 2 + 2].preserveAttachmentCount = 2;
-        PreserveAttachments = new uint32_t[2];  //This will leak
+        subpasses[i * 2 + 2].pDepthStencilAttachment = NULL;
+        subpasses[i * 2 + 2].preserveAttachmentCount = 3;
+        PreserveAttachments = new uint32_t[3];  //This will leak
         PreserveAttachments[0] = peel_attachment;
-        PreserveAttachments[1] = depth_attachment[!(i%2)];
+        PreserveAttachments[1] = depth_attachment[0];
+        PreserveAttachments[2] = depth_attachment[1];
         subpasses[i * 2 + 2].pPreserveAttachments = PreserveAttachments;
         LOGI("peel %d subpasses %d and %d pDepthStencilAttachment %d pInputAttachments %d", i, i * 2 + 1, i * 2 + 2, i%2, !(i%2));
     }
@@ -1880,7 +1881,7 @@ int setupBlendPipeline(struct engine* engine) {
     ds.pNext = NULL;
     ds.flags = 0;
     ds.depthTestEnable = VK_FALSE;
-    ds.depthWriteEnable = VK_TRUE;
+    ds.depthWriteEnable = VK_FALSE;
     ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     ds.depthBoundsTestEnable = VK_FALSE;
     ds.stencilTestEnable = VK_FALSE;
