@@ -1085,7 +1085,7 @@ static int engine_init_display(struct engine* engine) {
         subpasses[i * 2 + 1].pColorAttachments = &peelcolor_attachment_reference;
         subpasses[i * 2 + 1].pResolveAttachments = NULL;
         subpasses[i * 2 + 1].pDepthStencilAttachment = &depth_attachment_reference[i%2];
-        subpasses[i * 2 + 1].preserveAttachmentCount = 2;
+        subpasses[i * 2 + 1].preserveAttachmentCount = (i==0) ? 2 : 1;
         PreserveAttachments[0] = colour_attachment;
         PreserveAttachments[1] = depth_attachment[!(i%2)];
         subpasses[i * 2 + 1].pPreserveAttachments = PreserveAttachments;
