@@ -723,10 +723,16 @@ static int engine_init_display(struct engine* engine) {
         }
         vkGetImageMemoryRequirements(engine->vkDevice, engine->depthImage[0], &memoryRequirements);
         typeBits = memoryRequirements.memoryTypeBits;
-        //Get the index of the first set bit:
-        for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+        VkFlags requirements_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
             if ((typeBits & 1) == 1)//Check last bit;
-                break;
+            {
+                if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+                {
+                    found=true;
+                    break;
+                }
+            }
             typeBits >>= 1;
         }
     }
@@ -874,10 +880,16 @@ static int engine_init_display(struct engine* engine) {
             }
             vkGetImageMemoryRequirements(engine->vkDevice, engine->peelImage, &memoryRequirements);
             typeBits = memoryRequirements.memoryTypeBits;
-            //Get the index of the first set bit:
-            for (typeIndex = 0; typeIndex < 32; typeIndex++) {
+            VkFlags requirements_mask = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+            for (typeIndex = 0; typeIndex < engine->physicalDeviceMemoryProperties.memoryTypeCount; typeIndex++) {
                 if ((typeBits & 1) == 1)//Check last bit;
-                    break;
+                {
+                    if ((engine->physicalDeviceMemoryProperties.memoryTypes[typeIndex].propertyFlags & requirements_mask) == requirements_mask)
+                    {
+                        found=true;
+                        break;
+                    }
+                }
                 typeBits >>= 1;
             }
         }
