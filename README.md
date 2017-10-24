@@ -1,5 +1,5 @@
 # Vulkan depth peel demo
-Demonstrates order independent transparency on Vulkan using depth peeling. This code accompanies the blog post [Depth Peeling Order Independent Transparency in Vulkan] (https://matthewwellings.com/blog/depth-peeling-order-independent-transparency-in-vulkan/).
+Demonstrates order independent transparency on Vulkan using depth peeling. This code accompanies the blog post [Depth Peeling Order Independent Transparency in Vulkan](https://matthewwellings.com/blog/depth-peeling-order-independent-transparency-in-vulkan/).
 
 This demo will run on Linux (XCB) and Android. It makes use of subpasses, input attachments and reusable command buffers.
 
